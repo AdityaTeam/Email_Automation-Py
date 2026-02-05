@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Email Generator</h1>
+        <p>Upload an Excel file with email data to generate and send emails automatically.</p>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <label for="file">Select Excel File (.xlsx):</label>
+            <input type="file" id="file" name="file" accept=".xlsx" required>
+            <button type="submit">Upload and Store Data</button>
+        </form>
+
+        <div id="message"></div>
+
+        <button id="sendEmailsBtn" style="display: none;">Send Bulk Emails</button>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
