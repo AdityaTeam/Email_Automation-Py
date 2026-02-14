@@ -1,5 +1,7 @@
-document.getElementById('uploadForm').addEventListener('submit', function(e) {
+// Handle Excel Upload
+document.getElementById('uploadForm').addEventListener('submit', function (e) {
     e.preventDefault();
+
     const formData = new FormData(this);
     const messageDiv = document.getElementById('message');
     const sendBtn = document.getElementById('sendEmailsBtn');
@@ -16,21 +18,27 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
         if (data.message) {
             messageDiv.textContent = data.message;
             messageDiv.style.color = 'green';
+
+            // Show Send Emails button after successful upload
             sendBtn.style.display = 'block';
-        } else if (data.error) {
+        } 
+        else if (data.error) {
             messageDiv.textContent = data.error;
             messageDiv.style.color = 'red';
         }
     })
     .catch(error => {
-        messageDiv.textContent = 'An error occurred: ' + error.message;
+        messageDiv.textContent = 'Upload error: ' + error.message;
         messageDiv.style.color = 'red';
     });
 });
 
-document.getElementById('sendEmailsBtn').addEventListener('click', function() {
+
+// Handle Bulk Email Sending
+document.getElementById('sendEmailsBtn').addEventListener('click', function () {
     const messageDiv = document.getElementById('message');
-    messageDiv.textContent = 'Sending emails...';
+
+    messageDiv.textContent = 'Generating AI emails and sending...';
     messageDiv.style.color = 'blue';
 
     fetch('/send_bulk_emails', {
@@ -39,16 +47,18 @@ document.getElementById('sendEmailsBtn').addEventListener('click', function() {
     .then(response => response.json())
     .then(data => {
         if (data.results) {
-            messageDiv.textContent = 'Emails sent. Check console for details.';
+            messageDiv.textContent = '✅ Emails sent successfully!';
             messageDiv.style.color = 'green';
-            console.log(data.results);
-        } else if (data.error) {
+
+            console.log("Email Results:", data.results);
+        } 
+        else if (data.error) {
             messageDiv.textContent = data.error;
             messageDiv.style.color = 'red';
         }
     })
     .catch(error => {
-        messageDiv.textContent = 'An error occurred: ' + error.message;
+        messageDiv.textContent = 'Sending error: ' + error.message;
         messageDiv.style.color = 'red';
     });
 });

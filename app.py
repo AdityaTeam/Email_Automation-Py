@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for
 from send_email import send_email
+from ai_email_generator import generate_email
 import pandas as pd
 from pymongo import MongoClient
 import os
@@ -24,76 +25,83 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     print("Upload endpoint called")
+
     if 'file' not in request.files:
-        print("No file part")
         return jsonify({'error': 'No file part'}), 400
+
     file = request.files['file']
     if file.filename == '':
-        print("No selected file")
         return jsonify({'error': 'No selected file'}), 400
+
     if file and file.filename.endswith('.xlsx'):
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
-        print(f"File saved to {filepath}")
 
-        # Read Excel file
         try:
             df = pd.read_excel(filepath)
-            print(f"Excel file read successfully. Shape: {df.shape}")
-            print(f"Columns: {list(df.columns)}")
-        except Exception as e:
-            print(f"Error reading Excel file: {e}")
+            print("Excel read:", df.shape)
+
+            df = pd.read_excel(filepath)
+
+            # 🔥 CLEAN COLUMN NAMES
+            df.columns = df.columns.str.strip().str.lower()
+
+            emails = df.to_dict(orient='records')
+
+            collection.delete_many({})
+            collection.insert_many(emails)
+
+
+            # 🔥 IMPORTANT FIX — clear old data first
+            collection.delete_many({})
+
+            # Insert only once
+            collection.insert_many(emails)
+
             os.remove(filepath)
-            return jsonify({'error': f'Error reading Excel file: {str(e)}'}), 400
 
-        # Assume columns: email, subject, body
-        emails = []
-        for _, row in df.iterrows():
-            email_data = {
-                'email': row.get('email'),
-                'subject': row.get('subject', 'Automatic Email'),
-                'body': row.get('body', 'Hello, this email was sent automatically using Python!')
-            }
-            emails.append(email_data)
+            return jsonify({
+                'message': f'Successfully stored {len(emails)} records in database!'
+            }), 200
 
-        print(f"Prepared {len(emails)} emails for insertion")
-
-        # Insert into MongoDB
-        try:
-            result = collection.insert_many(emails)
-            print(f"Inserted {len(result.inserted_ids)} documents into MongoDB")
         except Exception as e:
-            print(f"Error inserting into MongoDB: {e}")
-            os.remove(filepath)
-            return jsonify({'error': f'Error inserting into MongoDB: {str(e)}'}), 500
+            print("Error:", e)
+            return jsonify({'error': str(e)}), 500
 
-        # Clean up file
-        os.remove(filepath)
+    return jsonify({'error': 'Invalid file type'}), 400
 
-        return jsonify({'message': f'Uploaded and stored {len(emails)} emails successfully!'}), 200
-    else:
-        print("Invalid file type")
-        return jsonify({'error': 'Invalid file type. Please upload an Excel file (.xlsx)'}), 400
 
 @app.route('/send_bulk_emails', methods=['POST'])
 def send_bulk_emails():
+
+    # 🟢 sender selected from frontend
+    sender_key = request.form.get('sender', 'company')
+
     emails = list(collection.find({}, {'_id': 0}))
+
     if not emails:
-        return jsonify({'error': 'No emails found in database'}), 400
-    
+        return jsonify({'error': 'No data found in database'}), 400
+
     results = []
+
     for email_data in emails:
-        success, error = send_email(email_data['email'], email_data['subject'], email_data['body'])
+        ai_body = generate_email(email_data)
+
+        success, error = send_email(
+            email_data['email'],
+            "AI Generated Email",
+            ai_body,
+            sender_key   # 🔥 selected sender
+        )
+
         results.append({
             'email': email_data['email'],
             'success': success,
-            'error': error if not success else None
+            'error': error
         })
-    
-    # Clear the collection after sending
-    collection.delete_many({})
-    
+
     return jsonify({'results': results}), 200
+
 
 @app.route('/send_email', methods=['POST'])
 def send_email_endpoint():

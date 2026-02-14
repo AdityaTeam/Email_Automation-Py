@@ -11,6 +11,7 @@
         <h1>Email Generator</h1>
         <p>Upload an Excel file with email data to generate and send emails automatically.</p>
 
+        <!-- Upload Form -->
         <form id="uploadForm" enctype="multipart/form-data">
             <label for="file">Select Excel File (.xlsx):</label>
             <input type="file" id="file" name="file" accept=".xlsx" required>
@@ -19,7 +20,20 @@
 
         <div id="message"></div>
 
-        <button id="sendEmailsBtn" style="display: none;">Send Bulk Emails</button>
+        <!-- Send Emails Form -->
+        <form action="/send_bulk_emails" method="post">
+            Select Sender Email:
+            <select name="sender">
+                <option value="dhrupal">Dhrupal Email</option>
+                <option value="company">Company Email</option>
+                <option value="hr">HR Email</option>
+                <option value="support">Support Email</option>
+            </select>
+            <button id="sendEmailsBtn" type="submit" style="display: none;">
+                Send Bulk Emails
+            </button>
+        </form>
+
     </div>
 
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
