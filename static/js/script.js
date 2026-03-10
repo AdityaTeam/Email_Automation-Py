@@ -38,7 +38,7 @@ document.getElementById('uploadForm').addEventListener('submit', function (e) {
 document.getElementById('sendEmailsBtn').addEventListener('click', function () {
     const messageDiv = document.getElementById('message');
 
-    messageDiv.textContent = 'Generating AI emails and sending...';
+    messageDiv.textContent = 'Sending pending emails...';
     messageDiv.style.color = 'blue';
 
     fetch('/send_bulk_emails', {
@@ -52,13 +52,12 @@ document.getElementById('sendEmailsBtn').addEventListener('click', function () {
 
             console.log("Email Results:", data.results);
         } 
-        else if (data.error) {
-            messageDiv.textContent = data.error;
-            messageDiv.style.color = 'red';
+        else if (data.message) {
+            messageDiv.textContent = data.message;
         }
     })
     .catch(error => {
-        messageDiv.textContent = 'Sending error: ' + error.message;
+        messageDiv.textContent = 'Error: ' + error.message;
         messageDiv.style.color = 'red';
     });
 });

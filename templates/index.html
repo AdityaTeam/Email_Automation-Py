@@ -3,39 +3,914 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Generator</title>
+    <title>Dashboard - Email Sending System</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📧</text></svg>">
 </head>
 <body>
-    <div class="container">
-        <h1>Email Generator</h1>
-        <p>Upload an Excel file with email data to generate and send emails automatically.</p>
+    <!-- Hidden data storage -->
+    <input type="hidden" id="emailAccountsData" value="">
+    
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="Logo" class="logo-img" style="width:45px;height:45px;border-radius:8px;">
+            <h1>Automatic Email Sending System</h1>
+        </div>
+        <div class="header-right">
+            <div class="user-info">
+                <div class="user-avatar">{{ session.get('username', 'U')[0]|upper }}</div>
+                <span class="user-name">{{ session.get('username', 'User') }}</span>
+            </div>
+            <a href="/logout" class="logout-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Logout
+            </a>
+        </div>
+    </header>
 
-        <!-- Upload Form -->
-        <form id="uploadForm" enctype="multipart/form-data">
-            <label for="file">Select Excel File (.xlsx):</label>
-            <input type="file" id="file" name="file" accept=".xlsx" required>
-            <button type="submit">Upload and Store Data</button>
-        </form>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
 
-        <div id="message"></div>
+    <!-- Main Container -->
+    <div class="main-container">
+        
+        <!-- Statistics Section -->
+        <section>
+            <div class="stats-container">
+                <div class="stat-card pending">
+                    <div class="stat-icon">⏳</div>
+                    <h3 id="pendingCount">0</h3>
+                    <p>Pending Emails</p>
+                </div>
+                <div class="stat-card sent">
+                    <div class="stat-icon">✅</div>
+                    <h3 id="sentCount">0</h3>
+                    <p>Sent Emails</p>
+                </div>
+                <div class="stat-card failed">
+                    <div class="stat-icon">❌</div>
+                    <h3 id="failedCount">0</h3>
+                    <p>Failed Emails</p>
+                </div>
+            </div>
+        </section>
 
-        <!-- Send Emails Form -->
-        <form action="/send_bulk_emails" method="post">
-            Select Sender Email:
-            <select name="sender">
-                <option value="dhrupal">Dhrupal Email</option>
-                <option value="company">Company Email</option>
-                <option value="hr">HR Email</option>
-                <option value="support">Support Email</option>
-            </select>
-            <button id="sendEmailsBtn" type="submit" style="display: none;">
-                Send Bulk Emails
-            </button>
-        </form>
+        <!-- Upload Section -->
+        <section>
+            <h2>📂 Upload Excel File</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="file-upload" id="fileUploadArea">
+                    <input type="file" id="file" name="file" accept=".xlsx" required>
+                    <div class="file-upload-icon">📁</div>
+                    <p><strong>Click to upload</strong> or drag and drop</p>
+                    <p class="file-help">Excel files only (.xlsx) • Required: email, requirement columns</p>
+                    <p class="file-name" id="fileName"></p>
+                </div>
+                <div style="text-align: center; margin-top: 20px;">
+                    <button type="submit" class="btn btn-primary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        Store Data to Database
+                    </button>
+                </div>
+            </form>
+            <div id="uploadMessage" class="message"></div>
+        </section>
 
+        <!-- Filter Section -->
+        <section>
+            <h2>📋 Recipient List</h2>
+            <div class="filter-bar">
+                <label for="statusFilter">Filter by Status:</label>
+                <select id="statusFilter" class="form-control" onchange="filterRecipients()">
+                    <option value="all">All Recipients</option>
+                    <option value="pending">Pending</option>
+                    <option value="sent">Sent</option>
+                    <option value="failed">Failed</option>
+                </select>
+                <button type="button" class="btn btn-primary btn-sm" onclick="loadRecipients()">Refresh</button>
+            </div>
+            
+            <div class="table-container">
+                <table id="recipientsTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Company</th>
+                            <th>Requirement</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recipientsBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px;">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📭</div>
+                                    <h3>Loading recipients...</h3>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="btn btn-danger btn-sm" onclick="clearAllData()">Clear All Data</button>
+                <span id="totalCount" style="color: var(--text-secondary); font-size: 14px;"></span>
+            </div>
+        </section>
+
+        <!-- Prompt Management Section -->
+        <section>
+            <h2>⚙️ Prompt Management</h2>
+            <div style="margin-bottom: 20px;">
+                <button type="button" class="btn btn-primary btn-sm" onclick="showAddPromptModal()">+ Add New Prompt</button>
+                <button type="button" class="btn btn-sm" onclick="loadPromptsFromDB()" style="background: var(--bg-light); border: 1px solid var(--border-color);">Reload Prompts</button>
+            </div>
+            <div class="table-container">
+                <table id="promptsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Template Preview</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="promptsBody">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Email Generation Section -->
+        <section id="emailSection">
+            <h2>✉️ Generate & Send Email</h2>
+            
+            <!-- Recipient Details -->
+            <div id="recipientDetails" class="recipient-details">
+                <h3>Selected Recipient</h3>
+                <div class="details-grid">
+                    <div>
+                        <strong>Name</strong>
+                        <span id="detailName">-</span>
+                    </div>
+                    <div>
+                        <strong>Email</strong>
+                        <span id="detailEmail">-</span>
+                    </div>
+                    <div>
+                        <strong>Company</strong>
+                        <span id="detailCompany">-</span>
+                    </div>
+                    <div>
+                        <strong>Phone</strong>
+                        <span id="detailPhone">-</span>
+                    </div>
+                    <div style="grid-column: 1 / -1;">
+                        <strong>Requirement</strong>
+                        <span id="detailRequirement">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Email Form -->
+            <form id="generateForm">
+                <div class="form-group">
+                    <label for="recipientSelect">Select Recipient</label>
+                    <select id="recipientSelect" class="form-control" onchange="onRecipientChange()" required>
+                        <option value="">-- Select Recipient --</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="promptSelect">Email Type (Prompt)</label>
+                    <select id="promptSelect" class="form-control" required>
+                        <option value="">-- Choose Email Type --</option>
+                        {% for prompt in prompts %}
+                        <option value="{{ prompt.id }}">{{ prompt.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="subjectInput">Email Subject</label>
+                    <input type="text" id="subjectInput" class="form-control" placeholder="Enter email subject" value="AI Generated Email">
+                </div>
+                
+                <!-- Sender Name and Email -->
+                <div class="sender-row">
+                    <div class="form-group">
+                        <label for="senderName">Sender Name</label>
+                        <input type="text" id="senderName" class="form-control" placeholder="Enter sender name" value="">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="senderSelect">Sender Email</label>
+                        <select id="senderSelect" class="form-control" required>
+                            {% for key, account in email_accounts.items() %}
+                            <option value="{{ key }}" {% if last_sender == key %}selected{% endif %}>{{ account.name }} - {{ account.email }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="ccSelect">CC (Optional)</label>
+                    <select id="ccSelect" class="form-control">
+                        <option value="">-- No CC --</option>
+                        {% for key, account in cc_accounts.items() %}
+                        <option value="{{ key }}">{{ account.name }} - {{ account.email }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Attachment Upload -->
+                <div class="attachment-area">
+                    <label>Attachment (Optional)</label>
+                    <input type="file" id="attachment" class="form-control" accept=".pdf,.docx,.xlsx,.doc,.txt,.png,.jpg,.jpeg">
+                    <div id="attachmentPreview" class="attachment-preview" style="display: none;">
+                        <div class="attachment-info">
+                            <span class="attachment-name" id="attachmentName"></span>
+                        </div>
+                        <button type="button" class="attachment-remove" onclick="removeAttachment()">✕</button>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    Generate AI Email
+                </button>
+            </form>
+            
+            <!-- Email Preview -->
+            <div id="generatedEmailSection" class="email-preview">
+                <label>Generated Email Preview</label>
+                <textarea id="generatedEmail" rows="10" placeholder="Your generated email will appear here..."></textarea>
+                <div class="button-group">
+                    <button type="button" class="btn btn-warning" onclick="showEditModal()">Edit Email</button>
+                    <button type="button" class="btn btn-success" onclick="sendSingleEmail()">Send Email</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <p>Logged in as: <strong>{{ session.get('username', 'User') }}</strong> • Automatic Email Sending System</p>
+        </footer>
     </div>
 
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Processing...</div>
+    </div>
+
+    <!-- Email Edit Modal -->
+    <div id="emailEditModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Email</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="emailEditor" rows="15" placeholder="Edit your email content..."></textarea>
+                <button type="button" class="btn btn-success" onclick="saveEditedEmail()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Prompt Modal -->
+    <div id="promptModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="promptModalTitle">Add New Prompt</h3>
+                <button class="close-btn" onclick="closePromptModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="promptName">Prompt Name</label>
+                    <input type="text" id="promptName" class="form-control" placeholder="Enter prompt name">
+                </div>
+                <div class="form-group">
+                    <label for="promptTemplate">Prompt Template</label>
+                    <textarea id="promptTemplate" rows="10" class="form-control" placeholder="Enter prompt template... Use {requirement} for requirement data"></textarea>
+                </div>
+                <button type="button" class="btn btn-primary" id="savePromptBtn" onclick="savePrompt()">Save Prompt</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentRecipient = null;
+        let currentStatusFilter = 'all';
+        let allRecipients = [];
+        let currentAttachment = null;
+        let editingPromptId = null;
+        let prompts = [];
+        let emailAccountsData = {{ email_accounts | tojson }};
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRecipients();
+            loadStats();
+            loadPromptsFromDB();
+            initFileUpload();
+            initAttachmentUpload();
+            
+            // Set hidden input value
+            document.getElementById('emailAccountsData').value = JSON.stringify(emailAccountsData);
+            
+            // Load sender name when sender is selected
+            document.getElementById('senderSelect').addEventListener('change', function() {
+                const senderKey = this.value;
+                if (emailAccountsData[senderKey]) {
+                    document.getElementById('senderName').value = emailAccountsData[senderKey].name;
+                }
+            });
+            
+            // Set default sender name
+            const defaultSender = document.getElementById('senderSelect').value;
+            if (emailAccountsData[defaultSender]) {
+                document.getElementById('senderName').value = emailAccountsData[defaultSender].name;
+            }
+        });
+
+        // Load prompts from MongoDB
+        async function loadPromptsFromDB() {
+            try {
+                const response = await fetch('/api/prompts');
+                prompts = await response.json();
+                renderPromptsTable();
+                
+                // Update dropdown
+                const select = document.getElementById('promptSelect');
+                select.innerHTML = '<option value="">-- Choose Email Type --</option>';
+                prompts.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.id;
+                    option.textContent = p.name;
+                    select.appendChild(option);
+                });
+                
+                showToast('Prompts loaded successfully', 'success');
+            } catch (error) {
+                console.error('Error loading prompts:', error);
+            }
+        }
+
+        // Render prompts table
+        function renderPromptsTable() {
+            const tbody = document.getElementById('promptsBody');
+            tbody.innerHTML = '';
+            
+            prompts.forEach(p => {
+                const tr = document.createElement('tr');
+                const preview = p.template ? p.template.substring(0, 80) + '...' : '-';
+                tr.innerHTML = `
+                    <td>${p.id}</td>
+                    <td>${p.name}</td>
+                    <td>${preview}</td>
+                    <td>
+                        <button class="action-btn" onclick='editPrompt(${p.id})'>Edit</button>
+                        <button class="action-btn" onclick='deletePrompt(${p.id})' style="color: var(--danger);">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Show add prompt modal
+        function showAddPromptModal() {
+            editingPromptId = null;
+            document.getElementById('promptModalTitle').textContent = 'Add New Prompt';
+            document.getElementById('promptName').value = '';
+            document.getElementById('promptTemplate').value = '';
+            document.getElementById('promptModal').classList.add('active');
+        }
+
+        // Edit prompt
+        function editPrompt(promptId) {
+            const prompt = prompts.find(p => p.id === promptId);
+            if (prompt) {
+                editingPromptId = promptId;
+                document.getElementById('promptModalTitle').textContent = 'Edit Prompt';
+                document.getElementById('promptName').value = prompt.name;
+                document.getElementById('promptTemplate').value = prompt.template;
+                document.getElementById('promptModal').classList.add('active');
+            }
+        }
+
+        // Save prompt
+        async function savePrompt() {
+            const name = document.getElementById('promptName').value.trim();
+            const template = document.getElementById('promptTemplate').value.trim();
+            
+            if (!name || !template) {
+                showToast('Please fill all fields', 'error');
+                return;
+            }
+            
+            try {
+                if (editingPromptId) {
+                    // Update existing prompt
+                    const response = await fetch(`/api/prompts/${editingPromptId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, template })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('Prompt updated successfully', 'success');
+                    }
+                } else {
+                    // Add new prompt
+                    const response = await fetch('/api/prompts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, template })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('Prompt added successfully', 'success');
+                    }
+                }
+                
+                closePromptModal();
+                loadPromptsFromDB();
+            } catch (error) {
+                showToast('Error saving prompt', 'error');
+            }
+        }
+
+        // Delete prompt
+        async function deletePrompt(promptId) {
+            if (!confirm('Are you sure you want to delete this prompt?')) return;
+            
+            try {
+                const response = await fetch(`/api/prompts/${promptId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('Prompt deleted', 'success');
+                    loadPromptsFromDB();
+                }
+            } catch (error) {
+                showToast('Error deleting prompt', 'error');
+            }
+        }
+
+        // Close prompt modal
+        function closePromptModal() {
+            document.getElementById('promptModal').classList.remove('active');
+            editingPromptId = null;
+        }
+
+        // File upload drag and drop
+        function initFileUpload() {
+            const fileUpload = document.getElementById('fileUploadArea');
+            const fileInput = document.getElementById('file');
+            const fileNameDisplay = document.getElementById('fileName');
+            
+            fileInput.addEventListener('change', function(e) {
+                if (this.files && this.files[0]) {
+                    fileNameDisplay.textContent = '📄 ' + this.files[0].name;
+                }
+            });
+            
+            fileUpload.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.classList.add('dragover');
+            });
+            
+            fileUpload.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.classList.remove('dragover');
+            });
+            
+            fileUpload.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    fileNameDisplay.textContent = '📄 ' + files[0].name;
+                }
+            });
+        }
+
+        // Attachment upload
+        function initAttachmentUpload() {
+            const attachmentInput = document.getElementById('attachment');
+            attachmentInput.addEventListener('change', async function(e) {
+                if (this.files && this.files[0]) {
+                    const file = this.files[0];
+                    
+                    // Upload to server
+                    const formData = new FormData();
+                    formData.append('attachment', file);
+                    
+                    try {
+                        const response = await fetch('/upload_attachment', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            currentAttachment = {
+                                filename: data.filename,
+                                originalName: data.original_name,
+                                filepath: data.filepath
+                            };
+                            
+                            document.getElementById('attachmentName').textContent = data.original_name;
+                            document.getElementById('attachmentPreview').style.display = 'flex';
+                            showToast('Attachment ready', 'success');
+                        }
+                    } catch (error) {
+                        showToast('Error uploading attachment', 'error');
+                    }
+                }
+            });
+        }
+
+        // Remove attachment
+        function removeAttachment() {
+            currentAttachment = null;
+            document.getElementById('attachment').value = '';
+            document.getElementById('attachmentPreview').style.display = 'none';
+        }
+
+        // Filter recipients
+        function filterRecipients() {
+            currentStatusFilter = document.getElementById('statusFilter').value;
+            loadRecipients();
+        }
+
+        // Load recipients
+        async function loadRecipients() {
+            try {
+                showLoading(true);
+                const statusParam = currentStatusFilter === 'all' ? 'all' : currentStatusFilter;
+                const response = await fetch('/api/recipients?status=' + statusParam);
+                allRecipients = await response.json();
+                
+                const tbody = document.getElementById('recipientsBody');
+                const recipientSelect = document.getElementById('recipientSelect');
+                
+                if (allRecipients.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">📭</div><h3>No recipients found</h3></div></td></tr>';
+                    document.getElementById('totalCount').textContent = '0 recipients';
+                    return;
+                }
+                
+                tbody.innerHTML = '';
+                recipientSelect.innerHTML = '<option value="">-- Select Recipient --</option>';
+                
+                allRecipients.forEach(r => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${r.name || '-'}</td>
+                        <td>${r.email || '-'}</td>
+                        <td>${r.company || '-'}</td>
+                        <td>${(r.requirement || '-').substring(0, 40)}${(r.requirement || '').length > 40 ? '...' : ''}</td>
+                        <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+                        <td><button class="action-btn" onclick='viewRecipient("${r._id}")'>View</button></td>
+                    `;
+                    tbody.appendChild(tr);
+                    
+                    if (r.status === 'pending' || r.status === 'failed') {
+                        const option = document.createElement('option');
+                        option.value = r._id;
+                        option.textContent = `${r.email} - ${r.name || ''} (${r.status})`;
+                        recipientSelect.appendChild(option);
+                    }
+                });
+                
+                document.getElementById('totalCount').textContent = `${allRecipients.length} recipient${allRecipients.length !== 1 ? 's' : ''}`;
+                showLoading(false);
+            } catch (error) {
+                console.error('Error loading recipients:', error);
+                showLoading(false);
+                showToast('Error loading recipients', 'error');
+            }
+        }
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                document.getElementById('pendingCount').textContent = data.pending || 0;
+                document.getElementById('sentCount').textContent = data.sent || 0;
+                document.getElementById('failedCount').textContent = data.failed || 0;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Handle file upload
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            showLoading(true);
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                showLoading(false);
+                
+                if (data.message) {
+                    showToast(data.message, 'success');
+                    document.getElementById('file').value = '';
+                    document.getElementById('fileName').textContent = '';
+                    loadRecipients();
+                    loadStats();
+                } else if (data.error) {
+                    showToast(data.error, 'error');
+                }
+            } catch (error) {
+                showLoading(false);
+                showToast('Upload error: ' + error.message, 'error');
+            }
+        });
+
+        // Handle recipient selection
+        function onRecipientChange() {
+            const recipientId = document.getElementById('recipientSelect').value;
+            const detailsSection = document.getElementById('recipientDetails');
+            
+            if (!recipientId) {
+                detailsSection.classList.remove('active');
+                return;
+            }
+            
+            const recipient = allRecipients.find(r => r._id === recipientId);
+            if (recipient) {
+                currentRecipient = recipient;
+                displayRecipientDetails(recipient);
+            }
+        }
+
+        // Display recipient details
+        function displayRecipientDetails(recipient) {
+            const detailsSection = document.getElementById('recipientDetails');
+            document.getElementById('detailName').textContent = recipient.name || '-';
+            document.getElementById('detailEmail').textContent = recipient.email || '-';
+            document.getElementById('detailCompany').textContent = recipient.company || '-';
+            document.getElementById('detailPhone').textContent = recipient.phone || '-';
+            document.getElementById('detailRequirement').textContent = recipient.requirement || '-';
+            detailsSection.classList.add('active');
+        }
+
+        // View recipient
+        async function viewRecipient(recipientId) {
+            try {
+                showLoading(true);
+                
+                let recipient = allRecipients.find(r => r._id === recipientId);
+                
+                if (!recipient) {
+                    const response = await fetch('/api/recipients?status=all');
+                    const recipients = await response.json();
+                    recipient = recipients.find(r => r._id === recipientId);
+                }
+                
+                if (recipient) {
+                    currentRecipient = recipient;
+                    const select = document.getElementById('recipientSelect');
+                    select.value = recipient._id;
+                    displayRecipientDetails(recipient);
+                    
+                    if (recipient.email_content && recipient.email_content !== '') {
+                        document.getElementById('generatedEmail').value = recipient.email_content;
+                        document.getElementById('generatedEmailSection').classList.add('active');
+                    } else {
+                        document.getElementById('generatedEmailSection').classList.remove('active');
+                    }
+                    
+                    document.getElementById('emailSection').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    showToast('Recipient not found', 'error');
+                }
+                
+                showLoading(false);
+            } catch (error) {
+                showLoading(false);
+                console.error('Error loading recipient:', error);
+                showToast('Error loading recipient details', 'error');
+            }
+        }
+
+        // Generate email
+        document.getElementById('generateForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const recipientId = document.getElementById('recipientSelect').value;
+            const promptId = document.getElementById('promptSelect').value;
+            const subject = document.getElementById('subjectInput').value;
+            
+            if (!recipientId) {
+                showToast('Please select a recipient', 'error');
+                return;
+            }
+            
+            if (!promptId) {
+                showToast('Please select an email type', 'error');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/generate_email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        recipient_id: recipientId,
+                        prompt_id: promptId,
+                        subject: subject
+                    })
+                });
+                
+                const data = await response.json();
+                showLoading(false);
+                
+                if (data.success) {
+                    document.getElementById('generatedEmail').value = data.email_content;
+                    document.getElementById('generatedEmailSection').classList.add('active');
+                    showToast('Email generated successfully!', 'success');
+                    loadRecipients();
+                } else {
+                    showToast(data.error || 'Error generating email', 'error');
+                }
+            } catch (error) {
+                showLoading(false);
+                console.error('Error:', error);
+                showToast('Error: ' + error.message, 'error');
+            }
+        });
+
+        // Send single email
+        async function sendSingleEmail() {
+            const senderKey = document.getElementById('senderSelect').value;
+            const senderName = document.getElementById('senderName').value;
+            const ccKey = document.getElementById('ccSelect').value;
+            const customEmail = document.getElementById('generatedEmail').value;
+            const recipientId = document.getElementById('recipientSelect').value;
+            const subject = document.getElementById('subjectInput').value;
+            
+            if (!recipientId) {
+                showToast('Please select a recipient first', 'error');
+                return;
+            }
+            
+            if (!customEmail) {
+                showToast('Please generate an email first', 'error');
+                return;
+            }
+            
+            if (!senderKey) {
+                showToast('Please select a sender email', 'error');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to send this email?')) {
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/send_single_email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        recipient_id: recipientId,
+                        sender: senderKey,
+                        sender_name: senderName,
+                        cc: ccKey,
+                        custom_email: customEmail,
+                        subject: subject,
+                        attachment: currentAttachment
+                    })
+                });
+                
+                const data = await response.json();
+                showLoading(false);
+                
+                if (data.success) {
+                    showToast('Email sent successfully!', 'success');
+                    document.getElementById('generatedEmailSection').classList.remove('active');
+                    document.getElementById('recipientDetails').classList.remove('active');
+                    document.getElementById('recipientSelect').value = '';
+                    removeAttachment();
+                    loadRecipients();
+                    loadStats();
+                } else {
+                    showToast(data.error || 'Error sending email', 'error');
+                }
+            } catch (error) {
+                showLoading(false);
+                console.error('Error:', error);
+                showToast('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Clear all data
+        async function clearAllData() {
+            if (!confirm('Are you sure you want to delete all recipient data? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                const response = await fetch('/clear_data', { method: 'POST' });
+                const data = await response.json();
+                showLoading(false);
+                showToast(data.message, 'success');
+                loadRecipients();
+                loadStats();
+            } catch (error) {
+                showLoading(false);
+                showToast('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Edit email modal
+        function showEditModal() {
+            const emailContent = document.getElementById('generatedEmail').value;
+            document.getElementById('emailEditor').value = emailContent;
+            document.getElementById('emailEditModal').classList.add('active');
+        }
+
+        function saveEditedEmail() {
+            const editedContent = document.getElementById('emailEditor').value;
+            document.getElementById('generatedEmail').value = editedContent;
+            closeModal();
+            showToast('Changes saved!', 'success');
+        }
+
+        function closeModal() {
+            document.getElementById('emailEditModal').classList.remove('active');
+        }
+
+        function closePromptModal() {
+            document.getElementById('promptModal').classList.remove('active');
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('emailEditModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+            const promptModal = document.getElementById('promptModal');
+            if (event.target === promptModal) {
+                closePromptModal();
+            }
+        }
+
+        // Helper functions
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('active', show);
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = { success: '✓', error: '✕', info: 'ℹ' };
+            
+            toast.innerHTML = `<span>${icons[type] || icons.info}</span> ${message}`;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideInRight 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+    </script>
 </body>
 </html>
+
