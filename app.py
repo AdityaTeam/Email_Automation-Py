@@ -30,7 +30,7 @@ if not os.path.exists(app.config["ATTACHMENTS_FOLDER"]):
     os.makedirs(app.config["ATTACHMENTS_FOLDER"])
 
 # MongoDB Connection:
-client = MongoClient("mongodb://localhost:27017/")
+client = MongoClient("mongodb+srv://Prompt_em:asdfghjkl@cluster0.o9em7j3.mongodb.net/")
 db = client["email_generator"]
 collection = db["emails"]
 users_collection = db["users"]
