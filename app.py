@@ -11,6 +11,10 @@ from datetime import datetime
 import random
 import time
 from functools import wraps
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Import ObjectId for MongoDB _id conversion:
 try:
@@ -19,7 +23,7 @@ except ImportError:
     from bson import ObjectId
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key_here"
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "your_secret_key_here")
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["ATTACHMENTS_FOLDER"] = "attachments"
 
@@ -30,8 +34,10 @@ if not os.path.exists(app.config["ATTACHMENTS_FOLDER"]):
     os.makedirs(app.config["ATTACHMENTS_FOLDER"])
 
 # MongoDB Connection:
-client = MongoClient("mongodb+srv://Prompt_em:asdfghjkl@cluster0.o9em7j3.mongodb.net/")
-db = client["email_generator"]
+mongodb_uri = os.getenv("MONGODB_URI", "mongodb+srv://Prompt_em:asdfghjkl@cluster0.o9em7j3.mongodb.net/")
+mongodb_database = os.getenv("MONGODB_DATABASE", "email_generator")
+client = MongoClient(mongodb_uri)
+db = client[mongodb_database]
 collection = db["emails"]
 users_collection = db["users"]
 settings_collection = db["settings"]
@@ -400,7 +406,7 @@ def send_single_email():
     cc_key = data.get("cc")
     subject = data.get("subject", "AI Generated Email")
     custom_email = data.get("custom_email", "")
-    custom_from_name = data.get("from_name", "").strip()
+    custom_from_name = data.get("sender_name", "").strip()
 
     try:
         recipient = collection.find_one({"_id": ObjectId(recipient_id)})
@@ -450,8 +456,18 @@ Phone: {COMPANY_INFO['phone']}
     full_email = email_body + signature
 
 
-    attachment_path = data.get("attachment_path")
-    attachment_name = data.get("attachment_name")
+    attachment_path = None
+    attachment_name = None
+    
+    # Handle attachment - frontend sends an object with filepath/filename
+    attachment_data = data.get("attachment")
+    if attachment_data:
+        if isinstance(attachment_data, dict):
+            attachment_path = attachment_data.get("filepath")
+            attachment_name = attachment_data.get("originalName")
+        elif isinstance(attachment_data, str) and attachment_data:
+            # Legacy support for direct path string
+            attachment_path = attachment_data
 
 
     success, error = send_email_with_attachment(
@@ -567,4 +583,4 @@ if __name__ == "__main__":
     if not users_collection.find_one({"username": "admin"}):
         users_collection.insert_one({"username": "admin", "password": "admin123", "created_at": datetime.now()})
         print("Default user created: admin / admin123")
-    app.run(debug=True, port=5003)
+    app.run(debug=True, port=5003, use_reloader=False)

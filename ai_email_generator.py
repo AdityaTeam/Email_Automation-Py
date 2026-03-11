@@ -3,9 +3,14 @@ from unittest import result
 from distro import name
 import requests
 from sympy import re
+import os
+from dotenv import load_dotenv
 
-# OpenRouter API Key
-API_KEY = "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"
+# Load environment variables from .env file
+load_dotenv()
+
+# OpenRouter API Key from environment variable
+API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
 
 
 def generate_email(data, prompt_template=None):
@@ -113,3 +118,4 @@ Hiring Requirement:
     except Exception as e:
         print(f"Exception in generate_email: {str(e)}")
         return "Thank you for your interest in our services."
+

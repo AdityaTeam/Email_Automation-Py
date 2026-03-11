@@ -576,6 +576,7 @@
                 if (allRecipients.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">📭</div><h3>No recipients found</h3></div></td></tr>';
                     document.getElementById('totalCount').textContent = '0 recipients';
+                    showLoading(false); // hide overlay before exiting
                     return;
                 }
                 

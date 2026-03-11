@@ -5,43 +5,36 @@ from email.mime.image import MIMEImage
 from email.mime.base import MIMEBase
 from email import encoders
 import os
+from dotenv import load_dotenv
 
-# Email Accounts Configuration with passwords
-EMAIL_ACCOUNTS = {
-    "admissions": {
-        "email": "admissions@company.com",
-        "password": "YOUR_APP_PASSWORD",
-        "name": "Admissions Team",
-        "position": "Admissions Executive"
-    },
-    "info": {
-        "email": "info@company.com",
-        "password": "YOUR_APP_PASSWORD",
-        "name": "Info Team",
-        "position": "Information Desk"
-    },
-    "support": {
-        "email": "support@company.com",
-        "password": "YOUR_APP_PASSWORD",
-        "name": "Support Team",
-        "position": "Support Lead"
-    },
-    "contact": {
-        "email": "contact@company.com",
-        "password": "YOUR_APP_PASSWORD",
-        "name": "Contact Team",
-        "position": "Customer Relations"
-    },
-    "dhrupal": {
-        "email": "dhrupalmakwana149@gmail.com",
-        "password": "uzai vlxp tqjx odlf",
-        "name": "Dhrupal Makwana",
-        "position": "Business Development Manager"
-    }
-}
+# Load environment variables from .env file
+load_dotenv()
 
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
+# Email Accounts Configuration - load from environment variables
+def load_email_accounts():
+    accounts = {}
+    # Define account keys
+    account_keys = ["admissions", "info", "support", "contact", "dhrupal"]
+    
+    for key in account_keys:
+        env_value = os.getenv(f"EMAIL_ACCOUNT_{key}")
+        if env_value:
+            # Format: email|password|name|position
+            parts = env_value.split("|")
+            if len(parts) >= 4:
+                accounts[key] = {
+                    "email": parts[0],
+                    "password": parts[1],
+                    "name": parts[2],
+                    "position": parts[3]
+                }
+    return accounts
+
+EMAIL_ACCOUNTS = load_email_accounts()
+
+# SMTP Configuration from environment variables
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 
 
 def send_email(receiver_email, subject, body, sender_key="dhrupal"):
@@ -226,6 +219,24 @@ def send_email_with_attachment(receiver_email, subject, body, from_email, from_n
     # Add attachment if provided
     if attachment_path and os.path.exists(attachment_path):
         try:
+            # Get the file extension to determine mime type
+            file_ext = os.path.splitext(attachment_path)[1].lower()
+            
+            # Determine content type based on file extension
+            content_types = {
+                '.pdf': 'application/pdf',
+                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                '.doc': 'application/msword',
+                '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                '.xls': 'application/vnd.ms-excel',
+                '.txt': 'text/plain',
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif',
+            }
+            content_type = content_types.get(file_ext, 'application/octet-stream')
+            
             with open(attachment_path, 'rb') as attachment:
                 part = MIMEBase('application', 'octet-stream')
                 part.set_payload(attachment.read())
@@ -233,13 +244,23 @@ def send_email_with_attachment(receiver_email, subject, body, from_email, from_n
                 
                 # Use provided name or extract from path
                 filename = attachment_name or os.path.basename(attachment_path)
+                # Fix: Remove extra space in header (filename=  should be filename=)
                 part.add_header(
                     'Content-Disposition',
-                    f'attachment; filename= {filename}'
+                    f'attachment; filename="{filename}"'
                 )
+                # Also add Content-Type with the proper mime type
+                part.add_header('Content-Type', f'{content_type}; name="{filename}"')
                 msg.attach(part)
+                
+        except FileNotFoundError:
+            return False, f"Attachment file not found: {attachment_path}"
+        except PermissionError:
+            return False, f"Permission denied reading attachment: {attachment_path}"
         except Exception as e:
             return False, f"Error attaching file: {str(e)}"
+    elif attachment_path and not os.path.exists(attachment_path):
+        return False, f"Attachment file does not exist: {attachment_path}"
     
     try:
         # Connect to SMTP server
