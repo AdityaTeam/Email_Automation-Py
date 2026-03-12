@@ -1,26 +1,33 @@
-from unittest import result
-
+# Flask
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, send_from_directory
-from prompt_toolkit import prompt
-from send_email import send_email, send_email_with_attachment
-from ai_email_generator import generate_email
-import pandas as pd
-from pymongo import MongoClient
-import os
-from datetime import datetime
-import random
-import time
-from functools import wraps
+
+# Environment variables
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Database
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
-# Import ObjectId for MongoDB _id conversion:
+# Data processing
+import pandas as pd
+
+# Standard libraries
+import os
+from datetime import datetime
+from functools import wraps
+
+# Email functions
+from send_email import send_email, send_email_with_attachment
+
+# AI Email Generator
+from ai_email_generator import API_KEY, generate_email
+
+
 try:
     from bson.objectid import ObjectId
 except ImportError:
     from bson import ObjectId
+
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "your_secret_key_here")
@@ -584,3 +591,4 @@ if __name__ == "__main__":
         users_collection.insert_one({"username": "admin", "password": "admin123", "created_at": datetime.now()})
         print("Default user created: admin / admin123")
     app.run(debug=True, port=5003, use_reloader=False)
+    

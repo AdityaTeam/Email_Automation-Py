@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # OpenRouter API Key from environment variable
-API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 
 def generate_email(data, prompt_template=None):
