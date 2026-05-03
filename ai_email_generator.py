@@ -1,41 +1,6 @@
-import os
 import requests
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-# OpenRouter API Key from environment variable
-API_KEY = os.getenv("OPENROUTER_API_KEY")
-if not API_KEY:
-    print(
-        "WARNING: OPENROUTER_API_KEY is not set. Create a .env file and add OPENROUTER_API_KEY=<your_key> or set the environment variable."
-    )
-
 
 def generate_email(data, prompt_template=None):
-    if not API_KEY:
-        raise RuntimeError(
-            "OPENROUTER_API_KEY is not configured. Please add it to .env or the environment."
-        )
-
-    """
-    Generate an email using the OpenRouter AI API.
-
-    Args:
-        data: Dictionary containing recipient details (name, email, company, requirement)
-        prompt_template: Optional custom prompt template. If not provided, uses default.
-
-    Returns:
-        Generated email body string
-    """
-
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-
     name = str(data.get("name", "") or "").strip()
     if not name or name.lower() in ["nan", "none"]:
         name = "Sir/Madam"
@@ -56,6 +21,8 @@ IMPORTANT RULES:
 - Do NOT include headings, markdown, or bullet points.
 - Do NOT add explanations.
 
+STRICTLY follow all rules. Do not break format under any condition.
+
 Write only the email body in natural paragraph format.
 
 Context:
@@ -73,44 +40,56 @@ Company: {company}
 
 Hiring Requirement:
 {requirement}
+
+Write a complete, natural-sounding email body. Do not leave it empty.
 """
 
     prompt_text = prompt_template.format(
-        name=name,
-        email=email_addr,
         company=company,
         requirement=requirement_data,
     )
 
-    payload = {
-        "model": "meta-llama/llama-3.1-8b-instruct",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a professional business email writer who writes B2B recruitment proposal emails."
-            },
-            {
-                "role": "user",
-                "content": prompt_text
-            }
-        ],
-        "max_tokens": 600
-    }
+    url = "http://localhost:11434/api/generate"
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
+    models = ["mistral:latest", "phi3:latest", "llama3:latest"]
 
-        result = response.json()
-        choices = result.get("choices")
-        if not choices or not isinstance(choices, list) or not choices[0].get("message"):
-            raise RuntimeError("OpenRouter returned an unexpected response structure.")
+    last_error = None
 
-        email_text = choices[0]["message"]["content"].strip()
-        return f"{greeting}\n\n{email_text}"
+    for model in models:
+        payload = {
+            "model": model,
+            "prompt": prompt_text,
+            "stream": False
+        }
 
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"OpenRouter request failed: {str(e)}")
-    except ValueError as e:
-        raise RuntimeError(f"OpenRouter returned invalid JSON: {str(e)}")
+        try:
+            for attempt in range(2):
+                try:
+                    print(f"Trying model: {model}, Attempt: {attempt+1}")
 
+                    response = requests.post(url, json=payload, timeout=90)
+
+                    print("Status Code:", response.status_code)
+                    print("Raw Response:", response.text)
+
+                    response.raise_for_status()
+                    result = response.json()
+
+                    email_text = result.get("response", "").strip()
+
+                    if email_text:
+                        return f"{greeting}\n\n{email_text}"
+                    else:
+                        raise RuntimeError("Empty response from Ollama")
+
+                except requests.exceptions.RequestException as e:
+                    print(f"Retry error ({model}):", e)
+                    last_error = e
+                    continue
+
+        except Exception as e:
+            print(f"Model failed: {model}, Error:", e)
+            last_error = e
+            continue
+
+    raise RuntimeError(f"Error generating email: {str(last_error)}")
