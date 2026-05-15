@@ -2,6 +2,8 @@ import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
+REQUEST_TIMEOUT = 7200
+
 MODELS = [
     "mistral:latest",
     "phi3:latest"
@@ -82,7 +84,7 @@ Write a complete professional email body.
             response = requests.post(
                 OLLAMA_URL,
                 json=payload,
-                timeout=40
+                timeout=REQUEST_TIMEOUT
             )
 
             print("Status Code:", response.status_code)
