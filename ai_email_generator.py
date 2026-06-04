@@ -70,13 +70,14 @@ Write a complete professional email body.
 
             payload = {
                 "model": model,
+                "system": "You are a precise business email writer. Always complete the full email body in proper paragraphs. Never cut off mid-response.",
                 "prompt": prompt_text,
                 "stream": False,
                 "options": {
                     "temperature": 0.15,
                     "top_p": 0.8,
                     "repeat_penalty": 1.05,
-                    "num_predict": 120,
+                    "num_predict": 600,
                     "num_ctx": 1024
                 }
             }
