@@ -1,3 +1,4 @@
+
 # Flask
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, send_from_directory
 
@@ -24,6 +25,17 @@ from send_email import send_email_with_attachment, send_email_with_logo_base64
 
 # AI Email Generator
 from ai_email_generator import generate_email
+from data_repository.file_processor import extract_metadata
+
+from data_repository.ai_classifier import classify_file
+from data_repository.audit_logger import log_action
+
+import zipfile
+import io
+from flask import send_file
+
+import threading
+from bson.objectid import ObjectId
 
 try:
     from bson.objectid import ObjectId
@@ -56,6 +68,11 @@ email_accounts_collection = db["email_accounts"]
 global_cc_collection = db["global_cc"]
 logs_collection = db["logs"]
 signatures_collection = db["signatures"]
+
+# Data Repository Collections
+files_collection = db["files"]
+audit_collection = db["audit_logs"]
+categories_collection = db["categories"]
 
 
 # ============================================
@@ -140,6 +157,33 @@ def get_global_cc():
     for cc in cc_emails:
         cc["_id"] = str(cc["_id"])
     return cc_emails
+
+def classify_background(doc_id, filepath, metadata):
+
+    try:
+        classification = classify_file(metadata)
+
+        files_collection.update_one(
+            {"_id": ObjectId(doc_id)},
+            {
+                "$set": {
+                    "category": classification.get("category", "General"),
+                    "data_type": classification.get("data_type", "Unknown"),
+                    "tags": classification.get("tags", [])
+                }
+            }
+        )
+
+    except Exception:
+        pass
+    
+def trigger_background_classification(doc_id, filepath, metadata):
+
+    threading.Thread(
+        target=classify_background,
+        args=(doc_id, filepath, metadata),
+        daemon=True
+    ).start()
 
 
 # Initialize on startup
@@ -371,6 +415,28 @@ def admin_delete_user(user_id):
     except:
         return jsonify({"success": False, "message": "Error deleting user"}), 500
 
+@app.route("/admin/delete-file/<file_id>", methods=["DELETE"])
+@admin_required
+def delete_file(file_id):
+
+    try:
+        file = files_collection.find_one({"_id": ObjectId(file_id)})
+
+        if not file:
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+        # delete from DB
+        files_collection.delete_one({"_id": ObjectId(file_id)})
+
+        # delete physical file (optional but recommended)
+        file_path = file.get("file_path")
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+
+        return jsonify({"success": True, "message": "File deleted successfully"})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/admin/prompts")
 @admin_required
@@ -451,6 +517,13 @@ def admin_signature():
         signature["_id"] = str(signature["_id"])
     return render_template("admin/signature.html", signature=signature)
 
+@app.route("/user/data-repository")
+@user_required
+def user_data_repository():
+
+    return render_template(
+        "user/data_repository.html"
+    )
 
 # ============================================
 # USER PANEL ROUTES
@@ -783,41 +856,71 @@ def get_status():
     return jsonify({"pending": pending, "sent": sent, "failed": failed, "total": total})
 
 
-# Upload Excel
+from flask import request, jsonify, session
+import os
+from datetime import datetime
+
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload_file():
-    file = request.files["file"]
-    if file and file.filename.endswith(".xlsx"):
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-        file.save(filepath)
-        df = pd.read_excel(filepath)
-        df.columns = df.columns.str.strip().str.lower()
 
-        column_mapping = {
-            "name": "name", "first name": "name", "full name": "name",
-            "email": "email", "email address": "email",
-            "phone": "phone", "phone number": "phone",
-            "company": "company", "company name": "company",
-            "requirement": "requirement", "requirements": "requirement", "need": "requirement", "description": "requirement"
-        }
-        df = df.rename(columns=column_mapping)
+    try:
+        # Get files from request
+        files = request.files.getlist("files")
 
-        required_columns = ["name", "email", "phone", "company", "requirement"]
-        df = df[[col for col in required_columns if col in df.columns]]
-        df = df.fillna("")
+        # Validate
+        if not files or len(files) == 0:
+            return jsonify({
+                "success": False,
+                "message": "No files uploaded"
+            }), 400
 
-        records = df.to_dict(orient="records")
-        for r in records:
-            r["status"] = "pending"
-            r["created_at"] = datetime.now()
-            r["user_id"] = session.get("user_id")
+        uploaded_files = []
 
-        if records:
-            recipients_collection.insert_many(records)
-        os.remove(filepath)
-        return jsonify({"message": f"{len(records)} records stored successfully!"})
-    return jsonify({"error": "Please upload .xlsx file only"}), 400
+        for file in files:
+
+            if file.filename == "":
+                continue
+
+            filename = file.filename
+
+            # Save path
+            filepath = os.path.join(
+                app.config["UPLOAD_FOLDER"],
+                filename
+            )
+
+            file.save(filepath)
+
+            file_extension = os.path.splitext(filename)[1].lower()
+            file_size = os.path.getsize(filepath)
+
+            document = {
+                "file_name": filename,
+                "file_path": filepath,
+                "file_type": file_extension,
+                "file_size": file_size,
+                "status": "uploaded",
+                "user_id": session.get("user_id"),
+                "uploaded_by": session.get("username"),
+                "created_at": datetime.utcnow()
+            }
+
+            recipients_collection.insert_one(document)
+
+            uploaded_files.append(filename)
+
+        return jsonify({
+            "success": True,
+            "message": "Files uploaded successfully",
+            "files": uploaded_files
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
 
 # Generate Email
@@ -1080,7 +1183,767 @@ def clear_data():
     result = recipients_collection.delete_many({"user_id": user_id})
     return jsonify({"message": f"Deleted {result.deleted_count} records"})
 
+import os
+from datetime import datetime
+from bson.objectid import ObjectId
+from werkzeug.utils import secure_filename
 
+MAX_FILES_PER_USER = 5
+
+VALID_CATEGORIES = [
+    "Industry",
+    "Doctor",
+    "Play School",
+    "General"
+]
+
+os.makedirs("repository_uploads", exist_ok=True)
+
+@app.route("/admin/upload-dataset", methods=["POST"])
+@admin_required
+def upload_dataset():
+
+    files = request.files.getlist("files")
+
+    if not files:
+        return jsonify({
+            "success": False,
+            "message": "No files uploaded"
+        }), 400
+
+    uploaded_files = []
+
+    for file in files:
+
+        if not file or file.filename == "":
+            continue
+
+        # secure filename
+        filename = secure_filename(file.filename)
+
+        # unique storage name
+        unique_filename = f"{int(datetime.now().timestamp()*1000)}_{filename}"
+
+        filepath = os.path.join("repository_uploads", unique_filename)
+
+        # save file instantly
+        file.save(filepath)
+
+        # extract metadata (fast operation)
+        metadata = extract_metadata(filepath)
+
+        # initial DB document (NO LLM WAIT HERE)
+        doc = {
+            "file_name": filename,
+            "stored_file_name": unique_filename,
+            "file_path": filepath,
+
+            # default values (will be updated later silently)
+            "category": "General",
+            "data_type": "Unknown",
+            "tags": [],
+
+            "metadata": metadata,
+
+            "status": "Available",
+            "allocated_to": None,
+            "allocated_user_id": None,
+            "download_count": 0,
+            "created_at": datetime.now()
+        }
+
+        # insert into DB
+        doc_id = files_collection.insert_one(doc).inserted_id
+
+        # 🔥 trigger background classification (NO WAIT)
+        trigger_background_classification(
+            str(doc_id),
+            filepath,
+            metadata
+        )
+
+        uploaded_files.append(filename)
+
+    return jsonify({
+        "success": True,
+        "message": f"{len(uploaded_files)} files uploaded successfully"
+    })
+
+
+@app.route("/admin/categories")
+@admin_required
+def admin_categories():
+
+    categories = [
+        "Industry",
+        "Doctor",
+        "Play School",
+        "General"
+    ]
+
+    result = []
+
+    for category in categories:
+
+        count = files_collection.count_documents({
+            "category": category
+        })
+
+        result.append({
+            "category": category,
+            "files_count": count
+        })
+
+    return jsonify(result)
+
+
+# ============================================
+# VIEW FILES INSIDE CATEGORY
+# ============================================
+
+@app.route("/user/categories")
+@user_required
+def user_categories():
+
+    categories = [
+        "Industry",
+        "Doctor",
+        "Play School",
+        "General"
+    ]
+
+    result = []
+
+    for category in categories:
+
+        count = files_collection.count_documents({
+            "category": category
+        })
+
+        result.append({
+            "category": category,
+            "files_count": count
+        })
+
+    return jsonify(result)
+
+@app.route("/user/category/<category_name>")
+@user_required
+def user_category_files(category_name):
+
+    if category_name not in VALID_CATEGORIES:
+        return jsonify([])
+
+    files = list(
+        files_collection.find(
+            {
+                "category": category_name
+            }
+        ).sort(
+            "created_at",
+            -1
+        )
+    )
+
+    response = []
+
+    for file in files:
+
+        response.append({
+
+            "id": str(file["_id"]),
+
+            "file_name":
+                file.get(
+                    "file_name",
+                    ""
+                ),
+
+            "category":
+                file.get(
+                    "category",
+                    "General"
+                ),
+
+            "status":
+                file.get(
+                    "status",
+                    "Available"
+                ),
+
+            "allocated_to":
+                file.get(
+                    "allocated_to"
+                ),
+
+            "allocated_user_id":
+                file.get(
+                    "allocated_user_id"
+                ),
+
+            "download_count":
+                file.get(
+                    "download_count",
+                    0
+                ),
+
+            "created_at":
+                file.get(
+                    "created_at"
+                ).strftime(
+                    "%d-%m-%Y %H:%M"
+                )
+                if file.get("created_at")
+                else ""
+
+        })
+
+    return jsonify(response)
+
+@app.route("/admin/category/<category_name>")
+@admin_required
+def admin_category_files(category_name):
+
+    if category_name not in VALID_CATEGORIES:
+        return jsonify([])
+
+    files = list(
+        files_collection.find({
+            "category": category_name
+        }).sort("created_at", -1)
+    )
+
+    response = []
+
+    for file in files:
+
+        response.append({
+            "id": str(file["_id"]),
+            "file_name": file.get("file_name"),
+            "category": file.get("category"),
+            "status": file.get("status", "Available"),
+            "allocated_to": file.get("allocated_to"),
+            "download_count": file.get("download_count", 0),
+            "created_at":
+                file.get("created_at").strftime(
+                    "%d-%m-%Y %H:%M"
+                ) if file.get("created_at") else ""
+        })
+
+    return jsonify(response)
+
+@app.route("/admin/category-page/<category>")
+@admin_required
+def admin_category_page(category):
+
+    if category not in VALID_CATEGORIES:
+        return redirect("/admin/categories-page")
+
+    return render_template(
+        "admin/category_files.html",
+        category=category
+    )
+
+@app.route("/user/category-page/<category>")
+@user_required
+def user_category_page(category):
+
+    return render_template(
+        "user/category_files.html",
+        category=category
+    )
+
+# ============================================
+# ALLOCATE FILE
+# ============================================
+
+@app.route("/user/allocate-file/<file_id>", methods=["POST"])
+@user_required
+def allocate_file(file_id):
+
+    try:
+
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
+
+        if not file:
+
+            return jsonify({
+                "success": False,
+                "message": "File not found"
+            })
+
+        if file.get("allocated_to"):
+
+            return jsonify({
+                "success": False,
+                "message":
+                    f"Already allocated to "
+                    f"{file.get('allocated_to')}"
+            })
+
+        files_collection.update_one(
+            {
+                "_id": ObjectId(file_id)
+            },
+            {
+                "$set": {
+                    "allocated_to":
+                        session["username"],
+                    "allocated_user_id":
+                        session["user_id"],
+                    "status":
+                        "Allocated"
+                }
+            }
+        )
+
+        log_action(
+            audit_collection,
+            session["username"],
+            "Allocated File",
+            file.get("file_name")
+        )
+
+        return jsonify({
+            "success": True,
+            "message":
+                "File allocated successfully"
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+
+# ============================================
+# UNALLOCATE FILE
+# ============================================
+
+@app.route("/user/unallocate-file/<file_id>", methods=["POST"])
+@user_required
+def unallocate_file(file_id):
+
+    try:
+
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
+
+        if not file:
+
+            return jsonify({
+                "success": False,
+                "message": "File not found"
+            })
+
+        if file.get("allocated_to") != session["username"]:
+
+            return jsonify({
+                "success": False,
+                "message":
+                    "You can only unallocate your own file"
+            })
+
+        files_collection.update_one(
+            {
+                "_id": ObjectId(file_id)
+            },
+            {
+                "$set": {
+                    "allocated_to": None,
+                    "allocated_user_id": None,
+                    "status": "Available"
+                }
+            }
+        )
+
+        log_action(
+            audit_collection,
+            session["username"],
+            "Unallocated File",
+            file.get("file_name")
+        )
+
+        return jsonify({
+            "success": True,
+            "message":
+                "File unallocated successfully"
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        })
+
+# ============================================
+# DOWNLOAD FILE
+# ============================================
+
+@app.route("/user/download-file/<file_id>")
+@user_required
+def user_download_file(file_id):
+
+    try:
+
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
+
+    except Exception:
+
+        return "Invalid file ID", 400
+
+    if not file:
+        return "File not found", 404
+
+    allocated_user = file.get(
+        "allocated_user_id"
+    )
+
+    if allocated_user and (
+        allocated_user != session["user_id"]
+    ):
+        return "Access Denied", 403
+
+    file_path = file.get("file_path")
+
+    if not file_path:
+        return "File missing", 404
+
+    if not os.path.exists(file_path):
+        return "File missing", 404
+
+    files_collection.update_one(
+        {
+            "_id": file["_id"]
+        },
+        {
+            "$inc": {
+                "download_count": 1
+            }
+        }
+    )
+
+    return send_from_directory(
+        os.path.dirname(file_path),
+        os.path.basename(file_path),
+        as_attachment=True
+    )
+
+
+# ============================================
+# ADMIN DOWNLOAD FILE
+# ============================================
+
+@app.route("/admin/download-file/<file_id>")
+@admin_required
+def admin_download_file(file_id):
+
+    try:
+
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
+
+    except Exception:
+
+        return "Invalid file ID", 400
+
+    if not file:
+        return "File not found", 404
+
+    file_path = file.get("file_path")
+
+    if not file_path:
+        return "File missing", 404
+
+    if not os.path.exists(file_path):
+        return "File missing", 404
+
+    files_collection.update_one(
+        {
+            "_id": file["_id"]
+        },
+        {
+            "$inc": {
+                "download_count": 1
+            }
+        }
+    )
+
+    return send_from_directory(
+        os.path.dirname(file_path),
+        os.path.basename(file_path),
+        as_attachment=True
+    )
+
+
+# ============================================
+# DELETE FILE (ADMIN)
+# ============================================
+
+@app.route("/admin/repository-files")
+@admin_required
+def repository_files():
+
+    files = list(
+        files_collection.find().sort(
+            "created_at",
+            -1
+        )
+    )
+
+    result = []
+
+    for file in files:
+
+        result.append({
+
+            "id": str(file["_id"]),
+
+            "file_name": file.get(
+                "file_name",
+                "Unknown"
+            ),
+
+            "category": file.get(
+                "category",
+                "General"
+            ),
+
+            "data_type": file.get(
+                "data_type",
+                "Unknown"
+            ),
+
+            "tags": file.get(
+                "tags",
+                []
+            ),
+
+            "status": file.get(
+                "status",
+                "Available"
+            ),
+
+            "allocated_to": file.get(
+                "allocated_to"
+            ),
+
+            "download_count": file.get(
+                "download_count",
+                0
+            ),
+
+            "created_at":
+                file.get(
+                    "created_at"
+                ).strftime(
+                    "%d-%m-%Y %H:%M"
+                )
+                if file.get(
+                    "created_at"
+                )
+                else ""
+
+        })
+
+    return jsonify(result)
+
+@app.route("/admin/repository-stats")
+@admin_required
+def repository_stats():
+
+    return jsonify({
+
+        "total_files":
+            files_collection.count_documents(
+                {}
+            ),
+
+        "allocated_files":
+            files_collection.count_documents({
+                "status": "Allocated"
+            }),
+
+        "available_files":
+            files_collection.count_documents({
+                "status": "Available"
+            }),
+
+        "industry":
+            files_collection.count_documents({
+                "category": "Industry"
+            }),
+
+        "doctor":
+            files_collection.count_documents({
+                "category": "Doctor"
+            }),
+
+        "play_school":
+            files_collection.count_documents({
+                "category": "Play School"
+            }),
+
+        "general":
+            files_collection.count_documents({
+                "category": "General"
+            })
+
+    })
+
+@app.route("/admin/data-repository")
+@admin_required
+def admin_data_repository():
+    return render_template("admin/data_repository.html")
+    
+@app.route("/admin/allocate-file/<file_id>", methods=["POST"])
+@admin_required
+def admin_allocate_file(file_id):
+
+    try:
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
+
+        if not file:
+            return jsonify({
+                "success": False,
+                "message": "File not found"
+            })
+
+        if file.get("allocated_to"):
+            return jsonify({
+                "success": False,
+                "message": f"Already allocated to {file.get('allocated_to')}"
+            })
+
+        files_collection.update_one(
+            {"_id": ObjectId(file_id)},
+            {
+                "$set": {
+                    "allocated_to": session["username"],
+                    "allocated_user_id": session["user_id"],
+                    "status": "Allocated"
+                }
+            }
+        )
+
+        log_action(
+            audit_collection,
+            session["username"],
+            "Allocated File (Admin)",
+            file.get("file_name")
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "File allocated successfully (Admin)"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+        
+@app.route("/admin/unallocate-file/<file_id>", methods=["POST"])
+@admin_required
+def admin_unallocate_file(file_id):
+
+    try:
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
+
+        if not file:
+            return jsonify({
+                "success": False,
+                "message": "File not found"
+            })
+
+        if not file.get("allocated_to"):
+            return jsonify({
+                "success": False,
+                "message": "File is not allocated"
+            })
+
+        files_collection.update_one(
+            {"_id": ObjectId(file_id)},
+            {
+                "$set": {
+                    "allocated_to": None,
+                    "allocated_user_id": None,
+                    "status": "Available"
+                }
+            }
+        )
+
+        log_action(
+            audit_collection,
+            session["username"],
+            "Unallocated File (Admin)",
+            file.get("file_name")
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "File unallocated successfully (Admin)"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+@app.route("/admin/categories-page")
+@admin_required
+def admin_categories_page():
+    return render_template("admin/categories.html")
+
+@app.route("/admin/delete-file/<file_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_file(file_id):
+
+    try:
+        file = files_collection.find_one({"_id": ObjectId(file_id)})
+
+        if not file:
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+        # delete physical file
+        file_path = file.get("file_path")
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+
+        # delete from DB
+        files_collection.delete_one({"_id": ObjectId(file_id)})
+
+        return jsonify({
+            "success": True,
+            "message": "File deleted successfully"
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+@app.route("/ping")
+def ping():
+    return "OK"
+
+        
 # ============================================
 # MAIN ENTRY POINT
 # ============================================

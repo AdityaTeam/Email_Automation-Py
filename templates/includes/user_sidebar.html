@@ -1,0 +1,74 @@
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-logo">
+            <div class="logo-icon">📧</div>
+            <div>
+                <h2>Email System</h2>
+                <span>User Panel</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+        <div class="nav-section">
+            <div class="nav-section-title">Main</div>
+
+            <a href="/user" class="nav-item">
+                <span class="nav-icon">📊</span>
+                <span>Dashboard</span>
+            </a>
+
+            <a href="/user/email-accounts" class="nav-item">
+                <span class="nav-icon">📧</span>
+                <span>My Email IDs</span>
+            </a>
+
+            <a href="/user/data-repository" class="nav-item">
+                <span class="nav-icon">🗄️</span>
+                <span>Data Repository</span>
+            </a>
+
+            <a href="/user/upload" class="nav-item">
+                <span class="nav-icon">📂</span>
+                <span>Upload Excel</span>
+            </a>
+
+            <a href="/user/compose" class="nav-item">
+                <span class="nav-icon">✉️</span>
+                <span>Compose Email</span>
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Account</div>
+
+            <a href="/user/signature" class="nav-item">
+                <span class="nav-icon">📝</span>
+                <span>Signature</span>
+            </a>
+
+            <a href="/user/logs" class="nav-item">
+                <span class="nav-icon">📋</span>
+                <span>Logs</span>
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="user-card">
+            <div class="user-avatar">
+                {{ session.get('username', 'U')[0]|upper }}
+            </div>
+            <div class="user-info">
+                <div class="name">
+                    {{ session.get('username', 'User') }}
+                </div>
+                <div class="role">User</div>
+            </div>
+        </div>
+
+        <a href="/logout" class="logout-link">
+            Logout
+        </a>
+    </div>
+</aside>

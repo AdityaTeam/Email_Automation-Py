@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Repository</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="app-layout">
+
+    {% include 'includes/admin_sidebar.html' %}
+
+    <!-- MAIN -->
+    <main class="main-content">
+
+        <header class="top-header">
+            <h1 class="page-title">
+                🗄️ Data Repository
+            </h1>
+        </header>
+
+        <div class="content-container">
+
+            <!-- STATS -->
+            <div class="stats-grid">
+
+                <div class="stat-card">
+                    <div class="stat-icon files">📁</div>
+                    <div class="stat-content">
+                        <h3 id="totalFiles">0</h3>
+                        <p>Total Files</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon accounts">💾</div>
+                    <div class="stat-content">
+                        <h3 id="storageUsed">0 MB</h3>
+                        <p>Storage Used</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon users">🤖</div>
+                    <div class="stat-content">
+                        <h3 id="indexedFiles">0</h3>
+                        <p>AI Indexed</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- UPLOAD -->
+            <div class="section">
+
+                <div class="section-header">
+                    <h2 class="section-title">
+                        📤 Upload Dataset
+                    </h2>
+                </div>
+
+                <form id="repoUploadForm">
+
+                    <div class="file-upload">
+
+                       <input type="file"
+                          id="repoFile"
+                         name="files"
+                          multiple>
+
+                        <div class="file-upload-icon">
+                            🗄️
+                        </div>
+
+                        <p>
+                            <strong>Click to upload</strong>
+                            or drag and drop
+                        </p>
+
+                        <p class="file-help">
+                            PDF, DOCX, XLSX, CSV, TXT,
+                            JSON, Images, ZIP Files
+                        </p>
+
+                        <p id="selectedFiles"></p>
+
+                    </div>
+
+                    <div style="text-align:center;margin-top:20px">
+
+                        <button type="submit"
+                                class="btn btn-primary">
+
+                            Upload Dataset
+
+                        </button>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+            <!-- FILE TABLE -->
+            <div class="section">
+
+                <div class="section-header">
+                    <h2 class="section-title">
+                        📂 Repository Files
+                    </h2>
+                </div>
+
+                <div class="table-container">
+
+                    <table>
+
+                        <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Upload Date</th>
+                            <th>Index Status</th>
+                            <th>Actions</th>
+                        </tr>
+                        </thead>
+
+                        <tbody id="repositoryTable">
+
+                            <tr>
+                                <td colspan="6">
+                                    <div class="empty-state">
+                                        <div class="empty-state-icon">
+                                            📁
+                                        </div>
+                                        <h3>
+                                            No files uploaded
+                                        </h3>
+                                    </div>
+                                </td>
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+</div>
+
+<script>
+
+const fileInput =
+document.getElementById("repoFile");
+
+fileInput.addEventListener("change", () => {
+
+    let names =
+    [...fileInput.files]
+    .map(f => f.name)
+    .join(", ");
+
+    document.getElementById(
+        "selectedFiles"
+    ).innerHTML = names;
+
+});
+
+
+document.getElementById(
+    "repoUploadForm"
+).addEventListener(
+    "submit",
+    async function (e) {
+
+        e.preventDefault();
+
+        const files =
+        document.getElementById(
+            "repoFile"
+        ).files;
+
+        if (files.length === 0) {
+            alert("Select files");
+            return;
+        }
+
+        const formData =
+        new FormData();
+
+        for (let file of files) {
+            formData.append(
+                "files",
+                file
+            );
+        }
+
+        const response =
+        await fetch(
+            "/admin/upload-dataset",
+            {
+                method: "POST",
+                body: formData
+            }
+        );
+
+        const data =
+        await response.json();
+
+        alert(data.message);
+
+        loadFiles();
+
+        document.getElementById(
+            "repoUploadForm"
+        ).reset();
+
+        document.getElementById(
+            "selectedFiles"
+        ).innerHTML = "";
+
+    }
+);
+
+
+async function loadFiles() {
+
+    const response =
+    await fetch(
+        "/admin/repository-files"
+    );
+
+    const files =
+    await response.json();
+
+    const table =
+    document.getElementById(
+        "repositoryTable"
+    );
+
+    if (files.length === 0) {
+
+        table.innerHTML = `
+        <tr>
+            <td colspan="6">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <h3>No files uploaded</h3>
+                </div>
+            </td>
+        </tr>
+        `;
+
+        return;
+    }
+
+    table.innerHTML = "";
+
+    files.forEach(file => {
+
+        table.innerHTML += `
+        <tr>
+            <td>${file.file_name}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${file.created_at}</td>
+            <td>${file.status}</td>
+            <td>
+
+                <button
+                onclick="downloadFile('${file.id}')"
+                class="btn btn-primary">
+                    Download
+                </button>
+
+                <button
+                onclick="deleteFile('${file.id}')"
+                class="btn btn-danger">
+                    Delete
+                </button>
+
+            </td>
+        </tr>
+        `;
+    });
+}
+
+
+function downloadFile(id) {
+
+    window.location.href =
+    `/admin/download-file/${id}`;
+
+}
+
+
+async function deleteFile(id) {
+
+    if (!confirm("Delete this file?")) return;
+
+    try {
+        const response = await fetch(`/admin/delete-file/${id}`, {
+            method: "DELETE"
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert("File deleted successfully");
+            loadFiles();
+        } else {
+            alert(data.message || "Failed to delete file");
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Server error while deleting file");
+    }
+}
+
+
+loadFiles();
+
+</script>
+
+</script>
+
+</body>
+</html>

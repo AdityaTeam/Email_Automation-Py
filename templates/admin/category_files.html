@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ category }} - Admin</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<div class="app-layout">
+    {% include 'includes/admin_sidebar.html' %}
+    <main class="main-content">
+
+        <header class="top-header">
+            <h1 class="page-title">
+                📂 {{ category }} (Admin View)
+            </h1>
+        </header>
+
+        <div class="content-container">
+
+            <div class="section">
+
+                <div class="section-header">
+                    <h2 class="section-title">Files</h2>
+
+                    <button class="btn btn-secondary"
+                            onclick="history.back()">
+                        ← Back
+                    </button>
+                </div>
+
+                <div class="table-container">
+
+                    <table>
+
+                        <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Status</th>
+                            <th>Allocated To</th>
+                            <th>Downloads</th>
+                            <th>Actions</th>
+                        </tr>
+                        </thead>
+
+                        <tbody id="fileTable">
+                            <tr>
+                                <td colspan="5">Loading...</td>
+                            </tr>
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+</div>
+
+<script>
+
+const category = "{{ category }}";
+const currentUser = "{{ session['username'] }}";
+
+async function loadFiles() {
+
+    const response = await fetch(
+        "/admin/category/" + encodeURIComponent(category)
+    );
+
+    const files = await response.json();
+
+    const table = document.getElementById("fileTable");
+
+    if (!files || files.length === 0) {
+        table.innerHTML = `
+            <tr>
+                <td colspan="5">No files found</td>
+            </tr>
+        `;
+        return;
+    }
+
+    table.innerHTML = "";
+
+    files.forEach(file => {
+
+        let actions = "";
+        const allocatedTo = file.allocated_to;
+
+        // =====================
+        // ALLOCATE (Admin route)
+        // =====================
+        if (!allocatedTo) {
+            actions += `
+                <button class="btn btn-success"
+                        onclick="allocateFile('${file.id}')">
+                    Allocate
+                </button>
+            `;
+        }
+
+        // =====================
+        // UNALLOCATE (Admin route)
+        // =====================
+        if (allocatedTo) {
+            actions += `
+                <button class="btn btn-danger"
+                        onclick="unallocateFile('${file.id}')">
+                    Unallocate
+                </button>
+            `;
+        }
+
+        // =====================
+        // DOWNLOAD (Admin)
+        // =====================
+        actions += `
+            <button class="btn btn-primary"
+                    onclick="downloadFile('${file.id}')">
+                Download
+            </button>
+        `;
+
+        table.innerHTML += `
+            <tr>
+                <td>${file.file_name}</td>
+                <td>${file.status}</td>
+                <td>${allocatedTo || "-"}</td>
+                <td>${file.download_count || 0}</td>
+                <td>${actions}</td>
+            </tr>
+        `;
+    });
+}
+
+
+// =====================
+// ADMIN ALLOCATE
+// =====================
+async function allocateFile(id) {
+
+    const res = await fetch(
+        "/admin/allocate-file/" + id,
+        { method: "POST" }
+    );
+
+    const data = await res.json();
+    alert(data.message || "Done");
+
+    loadFiles();
+}
+
+// =====================
+// ADMIN UNALLOCATE
+// =====================
+async function unallocateFile(id) {
+
+    const res = await fetch(
+        "/admin/unallocate-file/" + id,
+        { method: "POST" }
+    );
+
+    const data = await res.json();
+    alert(data.message || "Done");
+
+    loadFiles();
+}
+
+// =====================
+// ADMIN DOWNLOAD
+// =====================
+function downloadFile(id) {
+    window.location.href = "/admin/download-file/" + id;
+}
+
+loadFiles();
+
+</script>
+
+</body>
+</html>

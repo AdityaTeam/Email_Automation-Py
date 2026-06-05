@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User Data Repository</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <style>
+        .batch-card{
+            background:#fff;
+            border-radius:12px;
+            padding:20px;
+            margin-bottom:15px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        .batch-header{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        }
+
+        .modal{
+            display:none;
+            position:fixed;
+            z-index:9999;
+            left:0;
+            top:0;
+            width:100%;
+            height:100%;
+            background:rgba(0,0,0,0.5);
+        }
+
+        .modal-content{
+            background:white;
+            width:600px;
+            max-width:90%;
+            margin:80px auto;
+            padding:25px;
+            border-radius:12px;
+        }
+
+        .file-row{
+            padding:10px;
+            border-bottom:1px solid #eee;
+        }
+
+        .close-btn{
+            float:right;
+            cursor:pointer;
+            font-size:24px;
+            border:none;
+            background:none;
+        }
+
+        .btn-group{
+            display:flex;
+            gap:10px;
+        }
+
+        .allocated-tag{
+            color:green;
+            font-size:13px;
+            margin-top:5px;
+        }
+
+        .not-allocated{
+            color:#888;
+            font-size:13px;
+            margin-top:5px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="app-layout">
+
+{% include 'includes/user_sidebar.html' %}
+
+
+<!-- MAIN -->
+<main class="main-content">
+
+    <header class="top-header">
+        <h1 class="page-title">
+            🗄️ Data Repository
+        </h1>
+    </header>
+
+    <div class="content-container">
+
+        <div class="section">
+
+            <div class="section-header">
+                <h2 class="section-title">
+                    📂 Available Categories
+                </h2>
+            </div>
+
+            <div id="categoryList">
+
+                <div class="empty-state">
+
+                    <div class="empty-state-icon">
+                        📂
+                    </div>
+
+                    <h3>
+                        Loading Categories...
+                    </h3>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</main>
+
+<script>
+
+const container =
+document.getElementById(
+    "categoryList"
+);
+
+async function loadCategories() {
+
+    try {
+
+        const response =
+        await fetch(
+            "/user/categories"
+        );
+
+        const categories =
+        await response.json();
+
+        container.innerHTML = "";
+
+        if (
+            !categories ||
+            categories.length === 0
+        ) {
+
+            container.innerHTML = `
+
+            <div class="empty-state">
+
+                <div class="empty-state-icon">
+                    📂
+                </div>
+
+                <h3>
+                    No Categories Found
+                </h3>
+
+            </div>
+
+            `;
+
+            return;
+        }
+
+        categories.forEach(category => {
+
+            container.innerHTML += `
+
+            <div class="batch-card">
+
+                <div class="batch-header">
+
+                    <div>
+
+                        <h3>
+                            ${category.category}
+                        </h3>
+
+                        <div class="not-allocated">
+
+                            ${category.files_count}
+                            Files Available
+
+                        </div>
+
+                    </div>
+
+                    <div class="btn-group">
+
+                        <button
+                            class="btn btn-primary"
+                            onclick="viewCategory(
+                                '${category.category}'
+                            )">
+
+                            👁 View
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            `;
+
+        });
+
+    }
+
+    catch(error) {
+
+        console.error(error);
+
+        container.innerHTML = `
+
+        <div class="empty-state">
+
+            <div class="empty-state-icon">
+                ❌
+            </div>
+
+            <h3>
+                Failed To Load Categories
+            </h3>
+
+        </div>
+
+        `;
+
+    }
+
+}
+
+function viewCategory(category) {
+
+    window.location.href =
+        "/user/category-page/" +
+        encodeURIComponent(category);
+
+}
+
+loadCategories();
+
+</script>
+
+</body>
+</html>

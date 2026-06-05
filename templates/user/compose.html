@@ -8,42 +8,7 @@
 </head>
 <body>
     <div class="app-layout">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-logo">
-                    <div class="logo-icon">📧</div>
-                    <div><h2>Email System</h2><span>User Panel</span></div>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Main</div>
-                    <a href="/user" class="nav-item"><span class="nav-icon">📊</span><span>Dashboard</span></a>
-                    <a href="/user/email-accounts" class="nav-item"><span class="nav-icon">📧</span><span>My Email IDs</span></a>
-                    <a href="/user/upload" class="nav-item"><span class="nav-icon">📂</span><span>Upload Excel</span></a>
-                    <a href="/user/compose" class="nav-item active"><span class="nav-icon">✉️</span><span>Compose Email</span></a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Account</div>
-                    <a href="/user/signature" class="nav-item"><span class="nav-icon">📝</span><span>Signature</span></a>
-                    <a href="/user/logs" class="nav-item"><span class="nav-icon">📋</span><span>Logs</span></a>
-                </div>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-card">
-                    <div class="user-avatar">{{ session.get('username', 'U')[0]|upper }}</div>
-                    <div class="user-info">
-                        <div class="name">{{ session.get('username', 'User') }}</div>
-                        <div class="role">User</div>
-                    </div>
-                </div>
-                <a href="/logout" class="logout-link">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    Logout
-                </a>
-            </div>
-        </aside>
+        {% include 'includes/user_sidebar.html' %}
 
         <main class="main-content">
             <header class="top-header">

@@ -1,0 +1,95 @@
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-logo">
+            <div class="logo-icon">📧</div>
+            <div>
+                <h2>Admin Panel</h2>
+                <span>Email System</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+
+        <div class="nav-section">
+            <div class="nav-section-title">Main</div>
+
+            <a href="/admin" class="nav-item">
+                <span class="nav-icon">📊</span>
+                <span>Dashboard</span>
+            </a>
+
+            <a href="/admin/email-accounts" class="nav-item">
+                <span class="nav-icon">📧</span>
+                <span>My Email IDs</span>
+            </a>
+
+            <a href="/admin/upload" class="nav-item">
+                <span class="nav-icon">📂</span>
+                <span>Upload Excel</span>
+            </a>
+
+            <a href="/admin/data-repository" class="nav-item">
+                <span class="nav-icon">🗄️</span>
+                <span>Data Repository</span>
+            </a>
+
+            <a href="/admin/categories-page" class="nav-item">
+                <span class="nav-icon">📚</span>
+                <span>Categories</span>
+            </a>
+
+            <a href="/admin/compose" class="nav-item">
+                <span class="nav-icon">✉️</span>
+                <span>Compose Email</span>
+            </a>
+
+            <a href="/admin/users" class="nav-item">
+                <span class="nav-icon">👥</span>
+                <span>User Management</span>
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Configuration</div>
+
+            <a href="/admin/prompts" class="nav-item">
+                <span class="nav-icon">📝</span>
+                <span>Prompts</span>
+            </a>
+
+            <a href="/admin/cc-emails" class="nav-item">
+                <span class="nav-icon">📨</span>
+                <span>CC Emails</span>
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">Monitoring</div>
+
+            <a href="/admin/logs" class="nav-item">
+                <span class="nav-icon">📋</span>
+                <span>Logs</span>
+            </a>
+        </div>
+
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="user-card">
+            <div class="user-avatar">
+                {{ session.get('username', 'A')[0]|upper }}
+            </div>
+            <div class="user-info">
+                <div class="name">
+                    {{ session.get('username', 'Admin') }}
+                </div>
+                <div class="role">Administrator</div>
+            </div>
+        </div>
+
+        <a href="/logout" class="logout-link">
+            Logout
+        </a>
+    </div>
+</aside>

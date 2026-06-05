@@ -8,42 +8,7 @@
 </head>
 <body>
     <div class="app-layout">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-logo">
-                    <div class="logo-icon">📧</div>
-                    <div><h2>Email System</h2><span>User Panel</span></div>
-                </div>
-            </div>
-            <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Main</div>
-                    <a href="/user" class="nav-item"><span class="nav-icon">📊</span><span>Dashboard</span></a>
-                    <a href="/user/email-accounts" class="nav-item"><span class="nav-icon">📧</span><span>My Email IDs</span></a>
-                    <a href="/user/upload" class="nav-item active"><span class="nav-icon">📂</span><span>Upload Excel</span></a>
-                    <a href="/user/compose" class="nav-item"><span class="nav-icon">✉️</span><span>Compose Email</span></a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Account</div>
-                    <a href="/user/signature" class="nav-item"><span class="nav-icon">📝</span><span>Signature</span></a>
-                    <a href="/user/logs" class="nav-item"><span class="nav-icon">📋</span><span>Logs</span></a>
-                </div>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="user-card">
-                    <div class="user-avatar">{{ session.get('username', 'U')[0]|upper }}</div>
-                    <div class="user-info">
-                        <div class="name">{{ session.get('username', 'User') }}</div>
-                        <div class="role">User</div>
-                    </div>
-                </div>
-                <a href="/logout" class="logout-link">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    Logout
-                </a>
-            </div>
-        </aside>
+       {% include 'includes/user_sidebar.html' %}
 
         <main class="main-content">
             <header class="top-header">
@@ -59,10 +24,10 @@
 
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="file-upload" id="fileUploadArea">
-                            <input type="file" id="file" name="file" accept=".xlsx" required>
+                           <input type="file" id="file" name="files" accept="*/*" multiple required>
                             <div class="file-upload-icon">📁</div>
                             <p><strong>Click to upload</strong> or drag and drop</p>
-                            <p class="file-help">Excel files only (.xlsx)</p>
+                            <p class="file-help">All file types supported</p>
                             <p class="file-name" id="fileName"></p>
                         </div>
                         <div style="text-align: center; margin-top: 20px;">
@@ -133,139 +98,297 @@
     </div>
     <div class="toast-container" id="toastContainer"></div>
 
-    <script>
-        // File upload
-        const fileInput = document.getElementById('file');
-        const fileNameDisplay = document.getElementById('fileName');
+   <script>
+    // File upload
+    const fileInput = document.getElementById('file');
+    const fileNameDisplay = document.getElementById('fileName');
 
-        fileInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                fileNameDisplay.textContent = '📄 ' + this.files[0].name;
+    fileInput.addEventListener('change', function() {
+
+        if (this.files.length > 0) {
+
+            let names = [];
+
+            for (let i = 0; i < this.files.length; i++) {
+                names.push(this.files[i].name);
             }
-        });
 
-        // Drag and drop
-        const fileUploadArea = document.getElementById('fileUploadArea');
-        fileUploadArea.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            this.classList.add('dragover');
-        });
-        fileUploadArea.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            this.classList.remove('dragover');
-        });
-        fileUploadArea.addEventListener('drop', function(e) {
-            e.preventDefault();
-            this.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                fileInput.files = files;
-                fileNameDisplay.textContent = '📄 ' + files[0].name;
+            fileNameDisplay.innerHTML =
+                `📂 ${this.files.length} file(s) selected<br>` +
+                names.join('<br>');
+        }
+    });
+
+    // Drag and drop
+    const fileUploadArea = document.getElementById('fileUploadArea');
+
+    fileUploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+
+    fileUploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+    });
+
+    fileUploadArea.addEventListener('drop', function(e) {
+
+        e.preventDefault();
+        this.classList.remove('dragover');
+
+        const files = e.dataTransfer.files;
+
+        if (files.length > 0) {
+
+            fileInput.files = files;
+
+            let names = [];
+
+            for (let i = 0; i < files.length; i++) {
+                names.push(files[i].name);
             }
-        });
 
-        // Upload form
-        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            showLoading(true);
+            fileNameDisplay.innerHTML =
+                `📂 ${files.length} file(s) selected<br>` +
+                names.join('<br>');
+        }
+    });
 
-            const formData = new FormData(this);
+    // Upload form
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
 
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
+        e.preventDefault();
 
-                showLoading(false);
-
-                if (data.message) {
-                    showToast(data.message, 'success');
-                    fileInput.value = '';
-                    fileNameDisplay.textContent = '';
-                    loadRecipients();
-                } else if (data.error) {
-                    showToast(data.error, 'error');
-                }
-            } catch (error) {
-                showLoading(false);
-                showToast('Upload error: ' + error.message, 'error');
-            }
-        });
-
-        // Load recipients
-        async function loadRecipients() {
-            const status = document.getElementById('statusFilter').value;
-            try {
-                const response = await fetch('/api/recipients?status=' + status);
-                const recipients = await response.json();
-
-                const tbody = document.getElementById('recipientsBody');
-
-                if (recipients.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">📭</div><h3>No recipients found</h3></div></td></tr>';
-                    document.getElementById('totalCount').textContent = '0 recipients';
-                    return;
-                }
-
-                tbody.innerHTML = '';
-                recipients.forEach(r => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${r.name || '-'}</td>
-                        <td>${r.email || '-'}</td>
-                        <td>${r.company || '-'}</td>
-                        <td>${(r.requirement || '-').substring(0, 40)}${(r.requirement || '').length > 40 ? '...' : ''}</td>
-                        <td><span class="status-badge status-${r.status}">${r.status}</span></td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-
-                document.getElementById('totalCount').textContent = `${recipients.length} recipient${recipients.length !== 1 ? 's' : ''}`;
-            } catch (error) {
-                showToast('Error loading recipients', 'error');
-            }
+        if (fileInput.files.length === 0) {
+            showToast('Please select files', 'error');
+            return;
         }
 
-        // Clear all data
-        async function clearAllData() {
-            if (!confirm('Are you sure you want to delete all recipient data? This cannot be undone.')) {
+        showLoading(true);
+
+        const formData = new FormData();
+
+        for (let i = 0; i < fileInput.files.length; i++) {
+            formData.append('files', fileInput.files[i]);
+        }
+
+        try {
+
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            showLoading(false);
+
+            if (data.message) {
+
+                showToast(data.message, 'success');
+
+                fileInput.value = '';
+
+                fileNameDisplay.textContent = '';
+
+                loadRecipients();
+
+            } else if (data.error) {
+
+                showToast(data.error, 'error');
+            }
+
+        } catch (error) {
+
+            showLoading(false);
+
+            showToast(
+                'Upload error: ' + error.message,
+                'error'
+            );
+        }
+    });
+
+    // Load recipients
+    async function loadRecipients() {
+
+        const status =
+            document.getElementById(
+                'statusFilter'
+            ).value;
+
+        try {
+
+            const response =
+                await fetch(
+                    '/api/recipients?status=' +
+                    status
+                );
+
+            const recipients =
+                await response.json();
+
+            const tbody =
+                document.getElementById(
+                    'recipientsBody'
+                );
+
+            if (recipients.length === 0) {
+
+                tbody.innerHTML =
+                    '<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">📭</div><h3>No recipients found</h3></div></td></tr>';
+
+                document.getElementById(
+                    'totalCount'
+                ).textContent =
+                    '0 recipients';
+
                 return;
             }
 
-            try {
-                showLoading(true);
-                const response = await fetch('/clear_data', { method: 'POST' });
-                const data = await response.json();
-                showLoading(false);
-                showToast(data.message, 'success');
-                loadRecipients();
-            } catch (error) {
-                showLoading(false);
-                showToast('Error: ' + error.message, 'error');
-            }
+            tbody.innerHTML = '';
+
+            recipients.forEach(r => {
+
+                const tr =
+                    document.createElement(
+                        'tr'
+                    );
+
+                tr.innerHTML = `
+                    <td>${r.name || '-'}</td>
+                    <td>${r.email || '-'}</td>
+                    <td>${r.company || '-'}</td>
+                    <td>${(r.requirement || '-').substring(0,40)}${(r.requirement || '').length > 40 ? '...' : ''}</td>
+                    <td>
+                        <span class="status-badge status-${r.status}">
+                            ${r.status}
+                        </span>
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById(
+                'totalCount'
+            ).textContent =
+                `${recipients.length} recipient${recipients.length !== 1 ? 's' : ''}`;
+
+        } catch (error) {
+
+            showToast(
+                'Error loading recipients',
+                'error'
+            );
+        }
+    }
+
+    // Clear all data
+    async function clearAllData() {
+
+        if (
+            !confirm(
+                'Are you sure you want to delete all recipient data? This cannot be undone.'
+            )
+        ) {
+            return;
         }
 
-        function showLoading(show) {
-            document.getElementById('loadingOverlay').classList.toggle('active', show);
-        }
+        try {
 
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            const icons = { success: '✓', error: '✕', info: 'ℹ' };
-            toast.innerHTML = `<span>${icons[type] || icons.info}</span> ${message}`;
-            container.appendChild(toast);
-            setTimeout(() => {
-                toast.style.animation = 'slideInRight 0.3s ease reverse';
-                setTimeout(() => toast.remove(), 300);
-            }, 4000);
-        }
+            showLoading(true);
 
-        // Load on page load
-        loadRecipients();
-    </script>
+            const response =
+                await fetch(
+                    '/clear_data',
+                    {
+                        method: 'POST'
+                    }
+                );
+
+            const data =
+                await response.json();
+
+            showLoading(false);
+
+            showToast(
+                data.message,
+                'success'
+            );
+
+            loadRecipients();
+
+        } catch (error) {
+
+            showLoading(false);
+
+            showToast(
+                'Error: ' +
+                error.message,
+                'error'
+            );
+        }
+    }
+
+    function showLoading(show) {
+
+        document
+            .getElementById(
+                'loadingOverlay'
+            )
+            .classList.toggle(
+                'active',
+                show
+            );
+    }
+
+    function showToast(
+        message,
+        type = 'info'
+    ) {
+
+        const container =
+            document.getElementById(
+                'toastContainer'
+            );
+
+        const toast =
+            document.createElement(
+                'div'
+            );
+
+        toast.className =
+            `toast ${type}`;
+
+        const icons = {
+            success: '✓',
+            error: '✕',
+            info: 'ℹ'
+        };
+
+        toast.innerHTML =
+            `<span>${icons[type] || icons.info}</span> ${message}`;
+
+        container.appendChild(
+            toast
+        );
+
+        setTimeout(() => {
+
+            toast.style.animation =
+                'slideInRight 0.3s ease reverse';
+
+            setTimeout(
+                () => toast.remove(),
+                300
+            );
+
+        }, 4000);
+    }
+
+    loadRecipients();
+</script>
 </body>
 </html>
