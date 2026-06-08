@@ -3,17 +3,22 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
     <title>{{ category }} - Admin</title>
 
     <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/style.css') }}">
+          href="{{ url_for('static',
+          filename='css/style.css') }}">
 </head>
 
 <body>
 
 <div class="app-layout">
+
     {% include 'includes/admin_sidebar.html' %}
+
     <main class="main-content">
 
         <header class="top-header">
@@ -27,12 +32,16 @@
             <div class="section">
 
                 <div class="section-header">
-                    <h2 class="section-title">Files</h2>
+
+                    <h2 class="section-title">
+                        Files
+                    </h2>
 
                     <button class="btn btn-secondary"
                             onclick="history.back()">
                         ← Back
                     </button>
+
                 </div>
 
                 <div class="table-container">
@@ -50,9 +59,13 @@
                         </thead>
 
                         <tbody id="fileTable">
-                            <tr>
-                                <td colspan="5">Loading...</td>
-                            </tr>
+
+                        <tr>
+                            <td colspan="5">
+                                Loading...
+                            </td>
+                        </tr>
+
                         </tbody>
 
                     </table>
@@ -72,22 +85,60 @@
 const category = "{{ category }}";
 const currentUser = "{{ session['username'] }}";
 
+let users = [];
+
+/* ==========================
+   LOAD USERS
+========================== */
+async function loadUsers() {
+
+    try {
+
+        const response = await fetch(
+            "/admin/get-users"
+        );
+
+        users = await response.json();
+
+    } catch (err) {
+
+        console.error(
+            "Failed loading users",
+            err
+        );
+
+        users = [];
+    }
+}
+
+
+/* ==========================
+   LOAD FILES
+========================== */
 async function loadFiles() {
 
     const response = await fetch(
-        "/admin/category/" + encodeURIComponent(category)
+        "/admin/category/" +
+        encodeURIComponent(category)
     );
 
     const files = await response.json();
 
-    const table = document.getElementById("fileTable");
+    const table =
+        document.getElementById(
+            "fileTable"
+        );
 
     if (!files || files.length === 0) {
+
         table.innerHTML = `
             <tr>
-                <td colspan="5">No files found</td>
+                <td colspan="5">
+                    No files found
+                </td>
             </tr>
         `;
+
         return;
     }
 
@@ -96,38 +147,80 @@ async function loadFiles() {
     files.forEach(file => {
 
         let actions = "";
-        const allocatedTo = file.allocated_to;
 
-        // =====================
-        // ALLOCATE (Admin route)
-        // =====================
+        const allocatedTo =
+            file.allocated_to;
+
+        let userOptions = `
+            <option value="${currentUser}">
+                Allocate To Me
+            </option>
+        `;
+
+        users.forEach(user => {
+
+            if (
+                user.username === currentUser
+            ) {
+                return;
+            }
+
+            userOptions += `
+                <option value="${user.username}">
+                    ${user.username}
+                </option>
+            `;
+        });
+
+        /* ==========================
+           ALLOCATE
+        ========================== */
+
         if (!allocatedTo) {
+
             actions += `
-                <button class="btn btn-success"
-                        onclick="allocateFile('${file.id}')">
+                <select
+                    id="user-${file.id}"
+                    class="form-control"
+                    style="
+                        width:auto;
+                        display:inline-block;
+                        margin-right:8px;
+                    ">
+                    ${userOptions}
+                </select>
+
+                <button
+                    class="btn btn-success"
+                    onclick="allocateFile('${file.id}')">
                     Allocate
                 </button>
             `;
         }
 
-        // =====================
-        // UNALLOCATE (Admin route)
-        // =====================
+        /* ==========================
+           UNALLOCATE
+        ========================== */
+
         if (allocatedTo) {
+
             actions += `
-                <button class="btn btn-danger"
-                        onclick="unallocateFile('${file.id}')">
+                <button
+                    class="btn btn-danger"
+                    onclick="unallocateFile('${file.id}')">
                     Unallocate
                 </button>
             `;
         }
 
-        // =====================
-        // DOWNLOAD (Admin)
-        // =====================
+        /* ==========================
+           DOWNLOAD
+        ========================== */
+
         actions += `
-            <button class="btn btn-primary"
-                    onclick="downloadFile('${file.id}')">
+            <button
+                class="btn btn-primary"
+                onclick="downloadFile('${file.id}')">
                 Download
             </button>
         `;
@@ -145,46 +238,87 @@ async function loadFiles() {
 }
 
 
-// =====================
-// ADMIN ALLOCATE
-// =====================
+/* ==========================
+   ADMIN ALLOCATE
+========================== */
+
 async function allocateFile(id) {
 
-    const res = await fetch(
-        "/admin/allocate-file/" + id,
-        { method: "POST" }
-    );
+    const username =
+        document.getElementById(
+            `user-${id}`
+        ).value;
 
-    const data = await res.json();
-    alert(data.message || "Done");
+    const response =
+        await fetch(
+            "/admin/allocate-file/" + id,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify({
+                    username: username
+                })
+            }
+        );
+
+    const data =
+        await response.json();
+
+    alert(
+        data.message
+    );
 
     loadFiles();
 }
 
-// =====================
-// ADMIN UNALLOCATE
-// =====================
+
+/* ==========================
+   ADMIN UNALLOCATE
+========================== */
+
 async function unallocateFile(id) {
 
-    const res = await fetch(
-        "/admin/unallocate-file/" + id,
-        { method: "POST" }
-    );
+    const response =
+        await fetch(
+            "/admin/unallocate-file/" + id,
+            {
+                method: "POST"
+            }
+        );
 
-    const data = await res.json();
-    alert(data.message || "Done");
+    const data =
+        await response.json();
+
+    alert(
+        data.message
+    );
 
     loadFiles();
 }
 
-// =====================
-// ADMIN DOWNLOAD
-// =====================
+
+/* ==========================
+   ADMIN DOWNLOAD
+========================== */
+
 function downloadFile(id) {
-    window.location.href = "/admin/download-file/" + id;
+
+    window.location.href =
+        "/admin/download-file/" + id;
 }
 
-loadFiles();
+(async () => {
+
+    await loadUsers();
+
+    await loadFiles();
+
+})();
 
 </script>
 
