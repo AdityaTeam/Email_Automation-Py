@@ -415,29 +415,6 @@ def admin_delete_user(user_id):
     except:
         return jsonify({"success": False, "message": "Error deleting user"}), 500
 
-@app.route("/admin/delete-file/<file_id>", methods=["DELETE"])
-@admin_required
-def delete_file(file_id):
-
-    try:
-        file = files_collection.find_one({"_id": ObjectId(file_id)})
-
-        if not file:
-            return jsonify({"success": False, "message": "File not found"}), 404
-
-        # delete from DB
-        files_collection.delete_one({"_id": ObjectId(file_id)})
-
-        # delete physical file (optional but recommended)
-        file_path = file.get("file_path")
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-
-        return jsonify({"success": True, "message": "File deleted successfully"})
-
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
 @app.route("/admin/prompts")
 @admin_required
 def admin_prompts():
@@ -1474,6 +1451,7 @@ def allocate_file(file_id):
                 "message": "File not found"
             })
 
+        # Check if file is already allocated
         if file.get("allocated_to"):
 
             return jsonify({
@@ -1481,6 +1459,20 @@ def allocate_file(file_id):
                 "message":
                     f"Already allocated to "
                     f"{file.get('allocated_to')}"
+            })
+
+        # NEW: Check if current user already has a file allocated
+        existing_allocation = files_collection.find_one({
+            "allocated_to": session["username"]
+        })
+
+        if existing_allocation:
+
+            return jsonify({
+                "success": False,
+                "message":
+                    "You already have an allocated file. "
+                    "Please unallocate it before allocating another."
             })
 
         files_collection.update_one(
@@ -1810,6 +1802,30 @@ def admin_data_repository():
 def admin_allocate_file(file_id):
 
     try:
+
+        data = request.get_json()
+        username = data.get("username")
+
+        if not username:
+            return jsonify({
+                "success": False,
+                "message": "Username is required"
+            })
+
+        # Allocate to admin himself
+        if username == "self":
+            username = session["username"]
+
+        user = users_collection.find_one({
+            "username": username
+        })
+
+        if not user:
+            return jsonify({
+                "success": False,
+                "message": "User not found"
+            })
+
         file = files_collection.find_one({
             "_id": ObjectId(file_id)
         })
@@ -1826,12 +1842,32 @@ def admin_allocate_file(file_id):
                 "message": f"Already allocated to {file.get('allocated_to')}"
             })
 
+        # =====================================
+        # LIMIT = 1 FOR NORMAL USERS ONLY
+        # ADMIN CAN HAVE MULTIPLE FILES
+        # =====================================
+
+        if username != session["username"]:
+
+            existing_file = files_collection.find_one({
+                "allocated_to": username,
+                "status": "Allocated"
+            })
+
+            if existing_file:
+                return jsonify({
+                    "success": False,
+                    "message": f"{username} already has an allocated file"
+                })
+
         files_collection.update_one(
-            {"_id": ObjectId(file_id)},
+            {
+                "_id": ObjectId(file_id)
+            },
             {
                 "$set": {
-                    "allocated_to": session["username"],
-                    "allocated_user_id": session["user_id"],
+                    "allocated_to": username,
+                    "allocated_user_id": str(user["_id"]),
                     "status": "Allocated"
                 }
             }
@@ -1840,26 +1876,28 @@ def admin_allocate_file(file_id):
         log_action(
             audit_collection,
             session["username"],
-            "Allocated File (Admin)",
+            f"Allocated File To {username}",
             file.get("file_name")
         )
 
         return jsonify({
             "success": True,
-            "message": "File allocated successfully (Admin)"
+            "message": f"File allocated to {username}"
         })
 
     except Exception as e:
+
         return jsonify({
             "success": False,
             "message": str(e)
         }), 500
-        
+
 @app.route("/admin/unallocate-file/<file_id>", methods=["POST"])
 @admin_required
 def admin_unallocate_file(file_id):
 
     try:
+
         file = files_collection.find_one({
             "_id": ObjectId(file_id)
         })
@@ -1877,7 +1915,9 @@ def admin_unallocate_file(file_id):
             })
 
         files_collection.update_one(
-            {"_id": ObjectId(file_id)},
+            {
+                "_id": ObjectId(file_id)
+            },
             {
                 "$set": {
                     "allocated_to": None,
@@ -1890,20 +1930,37 @@ def admin_unallocate_file(file_id):
         log_action(
             audit_collection,
             session["username"],
-            "Unallocated File (Admin)",
+            "Unallocated File",
             file.get("file_name")
         )
 
         return jsonify({
             "success": True,
-            "message": "File unallocated successfully (Admin)"
+            "message": "File unallocated successfully"
         })
 
     except Exception as e:
+
         return jsonify({
             "success": False,
             "message": str(e)
         }), 500
+
+@app.route("/admin/get-users")
+@admin_required
+def get_users():
+
+    users = users_collection.find(
+        {},
+        {"username": 1}
+    )
+
+    return jsonify([
+        {
+            "username": user["username"]
+        }
+        for user in users
+    ])
 
 @app.route("/admin/categories-page")
 @admin_required
@@ -1915,18 +1972,39 @@ def admin_categories_page():
 def admin_delete_file(file_id):
 
     try:
-        file = files_collection.find_one({"_id": ObjectId(file_id)})
+        file = files_collection.find_one({
+            "_id": ObjectId(file_id)
+        })
 
         if not file:
-            return jsonify({"success": False, "message": "File not found"}), 404
+            return jsonify({
+                "success": False,
+                "message": "File not found"
+            }), 404
+
+    
+        # BLOCK DELETE IF FILE IS ALLOCATED
+      
+        if file.get("allocated_to"):
+            return jsonify({
+                "success": False,
+                "message": (
+                    f"File is allocated to "
+                    f"{file.get('allocated_to')}. "
+                    f"Unallocate before deleting."
+                )
+            }), 400
 
         # delete physical file
         file_path = file.get("file_path")
+
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
 
-        # delete from DB
-        files_collection.delete_one({"_id": ObjectId(file_id)})
+        # delete from database
+        files_collection.delete_one({
+            "_id": ObjectId(file_id)
+        })
 
         return jsonify({
             "success": True,
@@ -1934,14 +2012,13 @@ def admin_delete_file(file_id):
         })
 
     except Exception as e:
+
         return jsonify({
             "success": False,
             "message": str(e)
         }), 500
+        
 
-@app.route("/ping")
-def ping():
-    return "OK"
 
         
 # ============================================
